@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;
@@ -23,4 +25,75 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+html, body, #__next {
+  height: 100%;
+}
+
+/* Slider Styles für die erweiterten Weinfarben-Einstellungen */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2563eb;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2563eb;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider:focus {
+  outline: none;
+}
+
+.slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+}
+
+.slider:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+}
+
+.wein-inhalt-container {
+  /* Erforderlich, damit das ::before-Element relativ hierzu positioniert werden kann */
+  position: relative;
+  /* Verhindert, dass der Verlauf aus der Maske "ausläuft" */
+  overflow: hidden;
+}
+
+.wein-inhalt-container::before {
+  /* Pseudo-Element initialisieren */
+  content: '';
+  
+  /* Am oberen Rand positionieren */
+  position: absolute;
+  top: 140;
+  left: 0;
+  
+  /* Volle Breite und das obere Sechstel der Höhe */
+  width: 100%;
+  height: 16.67%; /* ca. 1/6 */
+
+  /* Ein Verlauf von der Hintergrundfarbe Ihrer Seite (Tailwind bg-gray-100) zu transparent */
+  background: linear-gradient(to bottom, rgba(243, 244, 246, 1), rgba(243, 244, 246, 0));
+  
+  /* Stellt sicher, dass der Verlauf ÜBER der Weinfarbe liegt */
+  z-index: 1;
 }

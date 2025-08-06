@@ -1,8 +1,17 @@
 // pages/api/ninox/export/[recordId].js
 // API Endpoint für direkten Bild-Export aus Ninox-Konfiguration
 
-import { createCanvas, loadImage } from 'canvas';
 import { createNinoxApiIntegration } from '@/lib/ninoxIntegration';
+
+// Prüfe Canvas-Verfügbarkeit zur Laufzeit
+function isCanvasAvailable() {
+    try {
+        require.resolve('canvas');
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 export default async function handler(req, res) {
     const { recordId } = req.query;

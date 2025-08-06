@@ -9,6 +9,11 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Vercel Optimierungen für bessere Performance
+  images: {
+    domains: ['localhost'],
+    unoptimized: true,
+  },
 }
 
 module.exports = nextConfig

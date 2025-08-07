@@ -33,8 +33,7 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   generateEtags: true,
-  // Output für statische Dateien optimieren
-  output: 'standalone',
+  // Kein output: 'standalone' für Vercel - verursacht Redirect-Loops
 }
 
 module.exports = nextConfig

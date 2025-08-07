@@ -113,8 +113,9 @@ export default function EtikettUploader({
             </div>
             <div className="mt-4 text-xs text-gray-500">
                 <p>Maximale Dateigröße: 10 MB</p>
-                <p>Empfohlene Auflösung: 300 DPI</p>
+                <p>Empfohlene Auflösung: 300 DPI, beliebiges Seitenverhältnis</p>
                 <p>Unterstützte Formate: JPG, PNG</p>
+                <p>💡 Krümmung wird automatisch an die Bildgröße angepasst</p>
             </div>
             <div>
                 <EtikettenHistorie

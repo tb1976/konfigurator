@@ -114,7 +114,8 @@ baseUrl + params
 
 ### Performance-Tipps
 - **Bildgröße**: Max. 2MB für schnelles Laden
-- **Dimensionen**: 200x150px bis 800x600px optimal
+- **Dimensionen**: Beliebiges Seitenverhältnis (Krümmung wird automatisch angepasst)
+- **Auflösung**: 300 DPI empfohlen für beste Druckqualität
 - **CDN**: Verwenden Sie CDN für bessere Performance
 
 ## 🧪 Testing

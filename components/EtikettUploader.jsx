@@ -15,15 +15,6 @@ export default function EtikettUploader({
     const isDisabled = !isReady || isProcessing;
     const fileInputRef = useRef(null);
 
-    // Debug-Ausgabe für Props
-    useEffect(() => {
-        console.log("EtikettUploader Props Update:", { 
-            isReady, 
-            isProcessing, 
-            isDisabled 
-        });
-    }, [isReady, isProcessing, isDisabled]);
-
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         console.log("1. Datei im Input-Feld erkannt:", file);
@@ -82,14 +73,6 @@ export default function EtikettUploader({
     return (
         <div>
             <p className="text-sm text-gray-600 mb-4">Laden Sie ein eigenes Etikett hoch oder wählen Sie aus bereits verwendeten Etiketten.</p>
-            
-            {/* Debug-Info */}
-            <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
-                <strong>Debug:</strong><br/>
-                isReady: {isReady ? '✅' : '❌'}<br/>
-                isProcessing: {isProcessing ? '⏳' : '✅'}<br/>
-                isDisabled: {isDisabled ? '🚫' : '✅'}
-            </div>
             
             <div 
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import EtikettUploader from './EtikettUploader';
 import WeinfarbenPanel from './WeinfarbenPanel';
 import ExportPanel from './ExportPanel';
@@ -57,12 +57,6 @@ function SequentialNavigation({ title, onBack, onNext, hasNext, hasPrevious, pre
 function StackPanelHeader({ title, menuId, onBack, onNext, onHome, hasNext, hasPrevious, nextMenuLabel, previousMenuLabel, menus, activeMenu, onMenuClick }) {
     return (
         <div className="sticky top-0 z-10 bg-white">
-            <IconNavigation 
-                menus={menus}
-                activeMenu={activeMenu}
-                onMenuClick={onMenuClick}
-                onHome={onHome}
-            />
             <SequentialNavigation 
                 title={title}
                 onBack={onBack}
@@ -106,22 +100,22 @@ function SidebarButton({ menuId, label, isActive, onClick }) {
             onClick={onClick}
             className={`
                 group relative flex items-center w-full text-left transition-all duration-200 ease-in-out
-                px-4 py-3 rounded-lg my-1 border border-transparent
+                px-4 py-4 rounded-lg my-1 border border-transparent
                 ${isActive
                     ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-500/25'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-md hover:border-gray-200'
                 }
             `}
         >
-            <div className={`flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-700'}`}>
+            <div className={`flex-shrink-0 w-8 h-8 flex items-center justify-center ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-700'}`}>
                 {MenuIcons[menuId]}
             </div>
-            <span className={`ml-3 font-medium text-sm transition-all duration-200 ${
+            <span className={`ml-4 font-medium text-base transition-all duration-200 ${
                 isActive ? 'text-white' : 'text-gray-700 group-hover:text-gray-900'
             }`}>
                 {label}
             </span>
-            <svg className={`ml-auto w-4 h-4 transition-transform duration-200 ${isActive ? 'rotate-90' : ''}`} 
+            <svg className={`ml-auto w-5 h-5 transition-transform duration-200 ${isActive ? 'rotate-90' : ''}`} 
                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -140,9 +134,17 @@ export default function AuswahlPanel({
     flaschenConfig, korkenDaten,
     kapselDaten, globalEtiketten,
     onEtikettSelect, onEtikettDelete,
-    onThumbnailClick, entwuerfe, onEntwurfLaden, onEntwurfLoeschen, onEntwurfSpeichern
+    onThumbnailClick, entwuerfe, onEntwurfLaden, onEntwurfLoeschen, onEntwurfSpeichern,
+    onMenuChange
 }) {
     const [activeMenu, setActiveMenu] = useState(null);
+
+    // Notify parent about menu changes for mobile layout handling
+    useEffect(() => {
+        if (onMenuChange) {
+            onMenuChange(activeMenu);
+        }
+    }, [activeMenu, onMenuChange]);
 
     // Debug logging
     console.log('🔍 AuswahlPanel Debug:');
@@ -234,10 +236,16 @@ export default function AuswahlPanel({
 
     return (
         <div className="h-screen flex flex-col">
-            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
-                <h2 className="text-lg font-semibold text-gray-800">Konfigurator</h2>
+            {/* Icon Navigation - immer sichtbar */}
+            <div className="sticky top-0 z-10 bg-white">
+                <IconNavigation 
+                    menus={menus}
+                    activeMenu={activeMenu}
+                    onMenuClick={handleMenuClick}
+                    onHome={handleNavigateHome}
+                />
             </div>
-
+            
             <div className="flex-1 min-h-0 overflow-y-auto">
                 {!activeMenu ? (
                     <div className="h-full flex flex-col">
@@ -447,7 +455,6 @@ export default function AuswahlPanel({
                                     exportableCanvas={exportableCanvas}
                                     fabricRef={fabricRef}
                                     flaschenConfig={flaschenConfig}
-                                    onEntwurfSpeichern={onEntwurfSpeichern}
                                 />
                             </StackPanel>
                         )}

@@ -77,11 +77,28 @@ export default function KonfiguratorAnsicht({
             });
         };
 
+        // ResizeObserver für responsive Canvas-Größe
+        const resizeObserver = new ResizeObserver(() => {
+            if (imagesRef.current.flasche && imagesRef.current.inhalt) {
+                drawCanvas(canvas, ctx);
+            }
+        });
+        
+        const container = canvas.parentElement;
+        if (container) {
+            resizeObserver.observe(container);
+        }
+
         Promise.all(Object.entries(imageUrls).map(([key, src]) => loadImage(key, src)))
             .then(() => {
                 drawCanvas(canvas, ctx);
             })
             .catch(err => console.error("Fehler beim Laden der Bilder für den Canvas:", err));
+
+        // Cleanup
+        return () => {
+            resizeObserver.disconnect();
+        };
 
     }, [flascheSrc, inhalt, weinfarbe, customColor, weinSettings, onCanvasReady, isDarkWineBottle]);
 
@@ -89,24 +106,56 @@ export default function KonfiguratorAnsicht({
         const { flasche, inhalt: inhaltsImage } = imagesRef.current;
         if (!flasche || !inhaltsImage) return;
 
-        // Verwende feste Canvas-Größe statt natürliche Bildgröße
-        const fixedWidth = 956;   // Feste Referenzbreite
-        const fixedHeight = 3000; // Feste Referenzhöhe
+        // Verwende die festen Original-Größen für alle Berechnungen
+        const fixedWidth = 956;   // Feste Referenzbreite (Original)
+        const fixedHeight = 3000; // Feste Referenzhöhe (Original)
+        
+        // Setze die Canvas auf die Container-Größe nur für die Anzeige
+        const containerElement = canvas.parentElement;
+        const containerWidth = containerElement ? containerElement.offsetWidth : 220;
+        const containerHeight = containerElement ? containerElement.offsetHeight : 700;
+        
+        // Berechne das Seitenverhältnis basierend auf dem ursprünglichen Design
+        const originalAspectRatio = fixedWidth / fixedHeight;
+        const containerAspectRatio = containerWidth / containerHeight;
+        
+        // Bestimme die Display-Größe basierend auf dem Container
+        let canvasDisplayWidth, canvasDisplayHeight;
+        if (containerAspectRatio > originalAspectRatio) {
+            // Container ist breiter - begrenzt durch Höhe
+            canvasDisplayHeight = containerHeight;
+            canvasDisplayWidth = canvasDisplayHeight * originalAspectRatio;
+        } else {
+            // Container ist höher - begrenzt durch Breite
+            canvasDisplayWidth = containerWidth;
+            canvasDisplayHeight = canvasDisplayWidth / originalAspectRatio;
+        }
 
         // Debug: Ausgabe aller relevanten Eigenschaften
         console.log('🖼️ Flaschenbild-Debug:', {
             src: flasche.src,
+            containerWidth,
+            containerHeight,
+            canvasDisplayWidth,
+            canvasDisplayHeight,
+            fixedWidth,
+            fixedHeight,
+            originalAspectRatio,
+            containerAspectRatio,
             naturalWidth: flasche.naturalWidth,
             naturalHeight: flasche.naturalHeight,
             isDarkWineBottle: isDarkWineBottle,
             bottleDataExists: !!bottleData,
-            darkWineOffsetX: bottleData?.darkWineOffsetX || 'undefined',
-            canvasWidth: fixedWidth,
-            canvasHeight: fixedHeight
+            darkWineOffsetX: bottleData?.darkWineOffsetX || 'undefined'
         });
         
+        // Setze die Canvas auf die Original-Größe für korrekte Koordinaten
         canvas.width = fixedWidth;
         canvas.height = fixedHeight;
+        
+        // Setze die CSS-Anzeigegröße für responsive Darstellung
+        canvas.style.width = canvasDisplayWidth + 'px';
+        canvas.style.height = canvasDisplayHeight + 'px';
 
         // DEBUG: Prüfe Alpha-Channel und sichtbare Bereiche
         if (isDarkWineBottle) {
@@ -380,8 +429,7 @@ export default function KonfiguratorAnsicht({
     return (
         <canvas
             ref={canvasRef}
-            style={{ width: '220px', height: '700px' }}
-            className="absolute z-10" // Liegt unter dem Etikett
+            className="absolute z-10" // Lies unter dem Etikett, Größe wird per JavaScript gesetzt
         />
     );
 }

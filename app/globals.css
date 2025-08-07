@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom Icon Styles */
+.icon-container {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.menu-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: brightness(0.8);
+  transition: all 0.2s ease;
+}
+
+.menu-icon:hover {
+  filter: brightness(1) contrast(1.1);
+  transform: scale(1.05);
+}
+
+/* Spezielle Behandlung für Korken und Kapsel Icons */
+.menu-icon.crop-top {
+  object-fit: cover;
+  object-position: top;
+  width: 32px;
+  height: 32px;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

@@ -6,9 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "start:prod": "next start -p 3001",
+    "lint": "next lint",
+    "deploy": "npm run build && pm2 restart konfigurator"
   },
   "dependencies": {
+    "canvas": "^2.11.2",
     "fabric": "^6.7.1",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.536.0",
@@ -17,9 +20,6 @@
     "pdfjs-dist": "^5.4.54",
     "react": "19.1.0",
     "react-dom": "19.1.0"
-  },
-  "optionalDependencies": {
-    "canvas": "^2.11.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

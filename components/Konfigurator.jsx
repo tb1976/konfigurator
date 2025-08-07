@@ -1,7 +1,7 @@
 // components/Konfigurator.jsx
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { BOTTLE_DATA, getFlaschenAuswahl, korkenDaten, kapselDaten, weinfarbenDaten } from '../lib/bottleData';
 import { processEtikettImage } from '../lib/imageProcessor';
 import AuswahlPanel from './AuswahlPanel';
@@ -39,6 +39,8 @@ export default function Konfigurator({
         blendMode: 'multiply'
     });
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [activeMenuId, setActiveMenuId] = useState(null);
+    const [isAndroid, setIsAndroid] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isFabricReady, setIsFabricReady] = useState(false);
     const [isEditingEtikett, setIsEditingEtikett] = useState(false);
@@ -54,6 +56,7 @@ export default function Konfigurator({
 
     const [hasMounted, setHasMounted] = useState(false);
     const [exportableCanvas, setExportableCanvas] = useState(null);
+    const [isMobile, setIsMobile] = useState(false);
 
     const debouncedCustomColor = useDebounce(customColor, 150);
     const debouncedWeinSettings = useDebounce(weinSettings, 150);
@@ -61,6 +64,12 @@ export default function Konfigurator({
     // Refs
     const fabricRef = useRef(null);
     const etikettCanvasRef = useRef(null);
+    const mainRef = useRef(null);
+    const sidebarRef = useRef(null);
+    const korkenRef = useRef(null);
+    const kapselRef = useRef(null);
+    const canvasContainerRef = useRef(null);
+    const flaschenContainerRef = useRef(null);
 
     // Abgeleitete Daten
     const aktuelleFlaschenConfig = activeFlasche ? BOTTLE_DATA[activeFlasche] : null;
@@ -76,7 +85,225 @@ export default function Konfigurator({
 
     useEffect(() => {
         setHasMounted(true);
+        
+        // Android-Erkennung
+        const isAndroidDevice = typeof window !== 'undefined' && 
+            /Android/i.test(navigator.userAgent);
+        setIsAndroid(isAndroidDevice);
+        
+        // Funktion zur Überprüfung der Bildschirmgröße
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        
+        // Initiale Überprüfung
+        checkMobile();
+        
+        // Event Listener für Größenänderungen
+        window.addEventListener('resize', checkMobile);
+        
+        return () => {
+            window.removeEventListener('resize', checkMobile);
+        };
     }, []);
+
+    // Zusätzlicher Layout-Effect für kontinuierliche Mobile-Erkennung
+    useLayoutEffect(() => {
+        if (typeof window !== 'undefined') {
+            const currentIsMobile = window.innerWidth < 768;
+            if (currentIsMobile !== isMobile) {
+                setIsMobile(currentIsMobile);
+            }
+        }
+    });
+
+    // Berechne Mobile-Status direkt bei jeder Render
+    const isCurrentlyMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
+    // Force Update für Android-Kompatibilität
+    const [, forceUpdate] = useState({});
+    useLayoutEffect(() => {
+        if (isMenuOpen || activeMenuId) {
+            forceUpdate({});
+        }
+    }, [isMenuOpen, activeMenuId]);
+
+    // Android-spezifische Transform-Handhabung für beide Elemente
+    useLayoutEffect(() => {
+        if (typeof window !== 'undefined') {
+            const isMobileDevice = window.innerWidth < 768;
+            const shouldTransform = isMenuOpen && isMobileDevice;
+            
+            const applyStyles = () => {
+                // Main-Element Transform und Layout-Anpassung
+                if (mainRef.current) {
+                    if (shouldTransform) {
+                        // Positioniere das Main-Element so, dass es bei 60% beginnt
+                        const viewportWidth = window.innerWidth;
+                        const sidebarWidth = Math.floor(viewportWidth * 0.6); // 60% der Viewport-Breite
+                        
+                        // Setze das Main-Element auf die volle Breite und positioniere es
+                        mainRef.current.style.position = 'fixed';
+                        mainRef.current.style.left = `${sidebarWidth}px`;
+                        mainRef.current.style.right = '0';
+                        mainRef.current.style.top = '0';
+                        mainRef.current.style.bottom = '0';
+                        mainRef.current.style.transform = 'none';
+                        mainRef.current.style.width = 'auto';
+                        
+                        // Entferne die Zentrierung und setze auf links-ausgerichtet
+                        mainRef.current.style.justifyContent = 'flex-start';
+                        mainRef.current.style.paddingLeft = '10px'; // Kleiner Abstand vom Sidebar-Rand
+                    } else {
+                        // Zurücksetzen auf ursprüngliche Styles - immer wenn shouldTransform false ist
+                        mainRef.current.style.position = '';
+                        mainRef.current.style.left = '';
+                        mainRef.current.style.right = '';
+                        mainRef.current.style.top = '';
+                        mainRef.current.style.bottom = '';
+                        mainRef.current.style.transform = '';
+                        mainRef.current.style.width = '';
+                        mainRef.current.style.justifyContent = '';
+                        mainRef.current.style.paddingLeft = '';
+                    }
+                }
+                
+                // Android-spezifische Sidebar-Breiten-Kontrolle
+                if (isAndroid && sidebarRef.current && isMobileDevice) {
+                    if (shouldTransform) {
+                        // Explizite Breite auf Android setzen
+                        const viewportWidth = window.innerWidth;
+                        const sidebarWidth = Math.floor(viewportWidth * 0.6); // 60% der Viewport-Breite
+                        sidebarRef.current.style.width = `${sidebarWidth}px`;
+                        sidebarRef.current.style.maxWidth = `${sidebarWidth}px`;
+                        console.log('🔧 Android Sidebar Breite gesetzt:', sidebarWidth + 'px');
+                    } else {
+                        // Breite zurücksetzen
+                        sidebarRef.current.style.width = '';
+                        sidebarRef.current.style.maxWidth = '';
+                    }
+                }
+            };
+            
+            // Sofort anwenden
+            applyStyles();
+            
+            // Zusätzlich nach kurzer Verzögerung für Android
+            if (isAndroid) {
+                setTimeout(applyStyles, 10);
+            }
+        }
+    }, [isMenuOpen, isCurrentlyMobile, activeMenuId, isAndroid]);
+
+    // Responsive Skalierung für Korken, Kapsel und Etikett-Bereich
+    useLayoutEffect(() => {
+        if (!aktuelleFlaschenConfig || !flaschenContainerRef.current) return;
+        
+        const container = flaschenContainerRef.current;
+        const actualWidth = container.offsetWidth;
+        const actualHeight = container.offsetHeight;
+        
+        // Original-Design-Größen - bottleData ist für 220x700px definiert
+        const originalWidth = 220;
+        const originalHeight = 700; // bottleData-Referenzgröße
+        
+        // Skalierungsfaktoren
+        const scaleX = actualWidth / originalWidth;
+        const scaleY = actualHeight / originalHeight;
+        
+        console.log('🎯 Responsive Skalierung:', {
+            actualWidth, actualHeight,
+            originalWidth, originalHeight,
+            scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3)
+        });
+        
+        // Skaliere Korken-Position
+        if (korkenRef.current && activeKorken) {
+            const korken = korkenRef.current;
+            korken.style.top = (aktuelleFlaschenConfig.korkenPosition.top * scaleY) + 'px';
+            korken.style.left = (aktuelleFlaschenConfig.korkenPosition.left * scaleX) + 'px';
+            korken.style.width = (60 * scaleX) + 'px';
+        }
+        
+        // Skaliere Kapsel-Position
+        if (kapselRef.current && activeKapsel) {
+            const kapsel = kapselRef.current;
+            kapsel.style.top = (aktuelleFlaschenConfig.kapselPosition.top * scaleY) + 'px';
+            kapsel.style.left = (aktuelleFlaschenConfig.kapselPosition.left * scaleX) + 'px';
+            kapsel.style.width = (aktuelleFlaschenConfig.kapselPosition.width * scaleX) + 'px';
+        }
+        
+        // Skaliere Canvas-Container (Etikett-Bereich)
+        if (canvasContainerRef.current) {
+            const canvasContainer = canvasContainerRef.current;
+            canvasContainer.style.top = (aktuelleFlaschenConfig.etikettCanvas.top * scaleY) + 'px';
+            canvasContainer.style.left = (aktuelleFlaschenConfig.etikettCanvas.left * scaleX) + 'px';
+            canvasContainer.style.width = (aktuelleFlaschenConfig.etikettCanvas.width * scaleX) + 'px';
+            canvasContainer.style.height = (aktuelleFlaschenConfig.etikettCanvas.height * scaleY) + 'px';
+        }
+        
+    }, [aktuelleFlaschenConfig, activeKorken, activeKapsel, isCurrentlyMobile]);
+
+    // ResizeObserver für kontinuierliche Anpassung
+    useLayoutEffect(() => {
+        if (!flaschenContainerRef.current) return;
+        
+        const resizeObserver = new ResizeObserver(() => {
+            // Trigger re-scaling when container size changes
+            if (aktuelleFlaschenConfig) {
+                // Force re-run of the scaling effect above by updating a dependency
+                setTimeout(() => {
+                    // Force update by triggering the scaling effect directly
+                    const container = flaschenContainerRef.current;
+                    if (!container) return;
+                    
+                    const actualWidth = container.offsetWidth;
+                    const actualHeight = container.offsetHeight;
+                    
+                    // Original-Design-Größen - bottleData ist für 220x700px definiert
+                    const originalWidth = 220;
+                    const originalHeight = 700; // bottleData-Referenzgröße
+                    
+                    const scaleX = actualWidth / originalWidth;
+                    const scaleY = actualHeight / originalHeight;
+                    
+                    console.log('🔄 ResizeObserver Skalierung:', {
+                        actualWidth, actualHeight, originalWidth, originalHeight,
+                        scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3)
+                    });
+                    
+                    // Skaliere Korken-Position
+                    if (korkenRef.current && activeKorken) {
+                        const korken = korkenRef.current;
+                        korken.style.top = (aktuelleFlaschenConfig.korkenPosition.top * scaleY) + 'px';
+                        korken.style.left = (aktuelleFlaschenConfig.korkenPosition.left * scaleX) + 'px';
+                        korken.style.width = (60 * scaleX) + 'px';
+                    }
+                    
+                    // Skaliere Kapsel-Position
+                    if (kapselRef.current && activeKapsel) {
+                        const kapsel = kapselRef.current;
+                        kapsel.style.top = (aktuelleFlaschenConfig.kapselPosition.top * scaleY) + 'px';
+                        kapsel.style.left = (aktuelleFlaschenConfig.kapselPosition.left * scaleX) + 'px';
+                        kapsel.style.width = (aktuelleFlaschenConfig.kapselPosition.width * scaleX) + 'px';
+                    }
+                    
+                    // Skaliere Canvas-Container (Etikett-Bereich)
+                    if (canvasContainerRef.current) {
+                        const canvasContainer = canvasContainerRef.current;
+                        canvasContainer.style.top = (aktuelleFlaschenConfig.etikettCanvas.top * scaleY) + 'px';
+                        canvasContainer.style.left = (aktuelleFlaschenConfig.etikettCanvas.left * scaleX) + 'px';
+                        canvasContainer.style.width = (aktuelleFlaschenConfig.etikettCanvas.width * scaleX) + 'px';
+                        canvasContainer.style.height = (aktuelleFlaschenConfig.etikettCanvas.height * scaleY) + 'px';
+                    }
+                }, 10);
+            }
+        });
+        
+        resizeObserver.observe(flaschenContainerRef.current);
+        
+        return () => resizeObserver.disconnect();
+    }, [aktuelleFlaschenConfig, activeKorken, activeKapsel]);
 
     useEffect(() => {
         // Lade Entwürfe basierend auf Modus und Kunden-ID
@@ -120,11 +347,31 @@ export default function Konfigurator({
                         fabricRef.current = { lib: fabric, canvas: canvas };
 
                         if (aktuelleFlaschenConfig?.etikettCanvas) {
-                            const { width, height } = aktuelleFlaschenConfig.etikettCanvas;
-                            canvas.setWidth(width);
-                            canvas.setHeight(height);
-                            canvas.renderAll();
-                            console.log(`✅ Canvas initiale Größe auf ${width}x${height} gesetzt.`);
+                            // Berechne die korrekte Canvas-Größe basierend auf der aktuellen Container-Skalierung
+                            const container = flaschenContainerRef.current;
+                            if (container) {
+                                const actualWidth = container.offsetWidth;
+                                const actualHeight = container.offsetHeight;
+                                const originalWidth = 220;
+                                const originalHeight = 700;
+                                const scaleX = actualWidth / originalWidth;
+                                const scaleY = actualHeight / originalHeight;
+                                
+                                const scaledCanvasWidth = aktuelleFlaschenConfig.etikettCanvas.width * scaleX;
+                                const scaledCanvasHeight = aktuelleFlaschenConfig.etikettCanvas.height * scaleY;
+                                
+                                canvas.setWidth(scaledCanvasWidth);
+                                canvas.setHeight(scaledCanvasHeight);
+                                canvas.renderAll();
+                                console.log(`✅ Canvas initiale Größe auf ${scaledCanvasWidth}x${scaledCanvasHeight} gesetzt (skaliert).`);
+                            } else {
+                                // Fallback: Verwende Original-Größe
+                                const { width, height } = aktuelleFlaschenConfig.etikettCanvas;
+                                canvas.setWidth(width);
+                                canvas.setHeight(height);
+                                canvas.renderAll();
+                                console.log(`✅ Canvas initiale Größe auf ${width}x${height} gesetzt (Original).`);
+                            }
                         } else {
                             console.warn("WARNUNG: Konnte initiale Canvas-Größe nicht setzen, da aktuelleFlaschenConfig fehlt.");
                         }
@@ -676,6 +923,11 @@ export default function Konfigurator({
         setActiveWeinfarbe(id);
     };
 
+    const handleMenuChange = (menuId) => {
+        console.log('🔧 Menü-Änderung erkannt:', menuId, 'Android:', isAndroid);
+        setActiveMenuId(menuId);
+    };
+
     const handleEntwurfSpeichern = async () => {
         setShowSaveDraftModal(true);
     };
@@ -777,34 +1029,42 @@ export default function Konfigurator({
 
     return (
         <div className="relative min-h-screen w-full bg-gray-100 md:flex">
-            {/* Hamburger Button */}
-            {!isMenuOpen && (
-                <button 
-                    onClick={() => setIsMenuOpen(true)}
-                    className="fixed top-4 left-4 z-[60] p-2 bg-white rounded-md shadow-lg md:hidden"
-                >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                </button>
-            )}
+            {/* Hamburger Button - nur auf Mobile sichtbar mit Animation */}
+            <button 
+                onClick={() => setIsMenuOpen(true)}
+                className={`fixed top-4 left-4 z-[60] p-2 bg-white rounded-md shadow-lg md:hidden 
+                           animate-pulse hover:animate-none active:animate-none
+                           transition-all duration-200 hover:bg-blue-50 hover:shadow-xl
+                           ${isMenuOpen ? 'hidden' : 'block'}`}
+            >
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                
+                {/* Zusätzlicher Puls-Ring für bessere Sichtbarkeit */}
+                <div className="absolute inset-0 rounded-md bg-blue-500 opacity-20 animate-ping pointer-events-none"></div>
+            </button>
 
             {/* Sidebar */}
-            <aside className={`
-                fixed top-0 left-0 z-50 h-full bg-white shadow-xl transition-transform duration-300 ease-in-out
-                transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-                w-3/5 md:relative md:w-2/5 lg:w-1/4 md:translate-x-0 md:flex-shrink-0
-            `}>
-                {isMenuOpen && (
-                    <button 
-                        onClick={() => setIsMenuOpen(false)}
-                        className="absolute top-3 right-4 z-[60] p-2 md:hidden"
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                )}
+            <aside 
+                ref={sidebarRef}
+                className={`
+                    fixed top-0 left-0 z-50 h-full bg-white shadow-xl transition-transform duration-300 ease-in-out
+                    transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+                    w-3/5 md:relative md:w-2/5 lg:w-1/4 md:translate-x-0 md:flex-shrink-0
+                `}
+            >
+                {/* Close Button - nur auf Mobile sichtbar */}
+                <button 
+                    onClick={() => setIsMenuOpen(false)}
+                    className={`absolute top-3 right-2 z-[60] p-2 md:hidden ${
+                        isMenuOpen ? 'block' : 'hidden'
+                    }`}
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
                 <AuswahlPanel 
                     flaschen={flaschenAuswahlListe}
                     korken={korkenDaten}
@@ -837,44 +1097,23 @@ export default function Konfigurator({
                     onEntwurfLaden={handleEntwurfLaden}
                     onEntwurfLoeschen={handleEntwurfLoeschen}
                     onEntwurfSpeichern={handleEntwurfSpeichern}
+                    onMenuChange={handleMenuChange}
                 />
             </aside>
 
             {/* Hauptansicht */}
-            <main className={`
-                flex-grow flex justify-center items-center p-4 transition-transform duration-300 ease-in-out
-                ${isMenuOpen ? 'md:translate-x-0 translate-x-[calc(40vw)]' : 'translate-x-0'}
-            `}>
+            <main 
+                ref={mainRef}
+                className="flex-grow flex justify-center items-center p-4 transition-transform duration-300 ease-in-out min-h-screen md:min-h-0"
+            >
                 {!aktuelleFlaschenConfig ? (
                     <div className="text-center text-gray-500">
                         <h2 className="text-2xl font-semibold mb-2">Willkommen</h2>
-                        <p className="mb-4">Bitte wählen Sie eine Flasche aus, um zu beginnen.</p>
-                        <div className="text-sm text-gray-400 bg-gray-50 p-4 rounded-lg">
-                            <p className="mb-2">💡 <strong>Tipp:</strong></p>
-                            <p>Nach der Flaschenauswahl können Sie Etiketten direkt auf die Flasche ziehen!</p>
-                        </div>
+                        <p>Bitte wählen Sie eine Flasche aus, um zu beginnen.</p>
                     </div>
                 ) : (
                     // Wir sind sicher, dass `aktuelleFlaschenConfig` hier existiert
                     (() => {
-                        // Alle von der Flasche abhängigen Styles werden erst hier sicher definiert
-                        const korkenStyle = { 
-                            position: 'absolute', 
-                            ...aktuelleFlaschenConfig.korkenPosition, 
-                            width: '60px',
-                            mixBlendMode: 'multiply'
-                        };
-                        
-                        const kapselStyle = { 
-                            position: 'absolute', 
-                            ...aktuelleFlaschenConfig.kapselPosition 
-                        };
-                        
-                        const canvasContainerStyle = { 
-                            position: 'absolute', 
-                            ...aktuelleFlaschenConfig.etikettCanvas 
-                        };
-
                         // Bestimme die richtige Flaschenbild-URL basierend auf der Weinfarbe
                         const shouldUseDarkBottle = aktuelleFlaschenConfig.darkWineThreshold?.includes(activeWeinfarbe);
                         const flaschenSrc = shouldUseDarkBottle && aktuelleFlaschenConfig.srcWithDarkWine 
@@ -883,20 +1122,23 @@ export default function Konfigurator({
 
                         return (
                             <div 
-                                className="relative w-[220px] h-[700px] transition-all duration-200 hover:bg-blue-50/20 border-2 border-transparent hover:border-blue-300/50 rounded-lg" 
+                                ref={flaschenContainerRef}
+                                className="relative w-[220px] h-[700px] md:w-[220px] md:h-[700px] 
+                                           max-md:w-auto max-md:h-[90vh] max-md:aspect-[220/700]
+                                           transition-all duration-200 hover:bg-blue-50/20 border-2 border-transparent hover:border-blue-300/50 rounded-lg" 
                                 data-konfigurator-flasche
                                 onDragOver={(e) => {
                                     e.preventDefault();
-                                    e.currentTarget.classList.add('border-blue-500', 'bg-blue-100/30');
+                                    e.currentTarget.classList.add('border-blue-500', 'bg-blue-200/80');
                                 }}
                                 onDragLeave={(e) => {
                                     e.preventDefault();
-                                    e.currentTarget.classList.remove('border-blue-500', 'bg-blue-100/30');
+                                    e.currentTarget.classList.remove('border-blue-500', 'bg-blue-200/80');
                                 }}
                                 onDrop={(e) => {
                                     e.preventDefault();
-                                    e.currentTarget.classList.remove('border-blue-500', 'bg-blue-100/30');
-                                    
+                                    e.currentTarget.classList.remove('border-blue-500', 'bg-blue-200/80');
+
                                     const file = e.dataTransfer.files[0];
                                     if (file && file.type.startsWith('image/')) {
                                         console.log("Etikett auf Flasche gedroppt:", file.name);
@@ -916,7 +1158,10 @@ export default function Konfigurator({
                                     isDarkWineBottle={shouldUseDarkBottle}
                                     bottleData={aktuelleFlaschenConfig}
                                 />
-                                <div style={canvasContainerStyle} className="z-20">
+                                <div 
+                                    ref={canvasContainerRef}
+                                    style={{ position: 'absolute' }}
+                                    className="z-20">
                                     <canvas ref={etikettCanvasRef} />
                                     {isEditingEtikett && (
                                     <div 
@@ -924,28 +1169,48 @@ export default function Konfigurator({
                                         aria-hidden="true"
                                     />
                                 )}
-
-                                {/* 2. Der Hinweis-Text */}
+                                </div>
+                                
+                                {/* Bearbeitungsinfo außerhalb der Canvas */}
                                 {isEditingEtikett && (
-                                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-blue-800 text-white text-xs px-3 py-1 rounded-md shadow-lg whitespace-nowrap">
-                                        Bearbeitungsmodus aktiv
+                                    <div className="absolute top-0 center-full ml-4 z-40 whitespace-nowrap">
+                                        <div className="bg-white text-gray-800 px-4 py-3 rounded-lg shadow-lg border border-gray-200">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                <span className="font-medium text-sm">Etikett wird bearbeitet</span>
+                                            </div>
+                                            <div className="text-gray-600 text-xs space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span>↔️ Ziehen</span>
+                                                    <span className="text-gray-400">·</span>
+                                                    <span>📐 Ecken</span>
+                                                    <span className="text-gray-400">·</span>
+                                                    <span>✖️ Klick außerhalb</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
-                                </div>
+                                
                                 {/* Korken und Kapsel als HTML-Elemente mit höherem Z-Index */}
                                 {activeKorken && (
                                     <img 
+                                        ref={korkenRef}
                                         src={korkenDaten.find(k=>k.id===activeKorken).src} 
                                         alt="Korken" 
-                                        style={korkenStyle} 
+                                        style={{ 
+                                            position: 'absolute',
+                                            mixBlendMode: 'multiply'
+                                        }}
                                         className="z-30" 
                                     />
                                 )}
                                 {activeKapsel && (
                                     <img 
+                                        ref={kapselRef}
                                         src={kapselDaten.find(k=>k.id===activeKapsel).src} 
                                         alt="Kapsel" 
-                                        style={kapselStyle} 
+                                        style={{ position: 'absolute' }}
                                         className="z-30" 
                                     />
                                 )}

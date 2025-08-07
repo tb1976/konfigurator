@@ -9,15 +9,20 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Vercel Optimierungen für bessere Performance
+  // Production Optimierungen
   images: {
     domains: ['localhost'],
-    unoptimized: true,
+    unoptimized: false, // Für bessere Performance
   },
-  // Webpack Konfiguration für optionale Dependencies
+  // Canvas Support für VPS
   webpack: (config, { isServer }) => {
-    // Canvas als optionale Dependency behandeln
-    if (!isServer) {
+    // Canvas nur auf Server verfügbar machen
+    if (isServer) {
+      config.externals = config.externals || [];
+      // Canvas als externes Modul behandeln
+      config.externals.push('canvas');
+    } else {
+      // Client-side fallbacks
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -27,16 +32,12 @@ const nextConfig = {
       };
     }
     
-    // Canvas als external wenn auf Server
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push({
-        canvas: 'canvas'
-      });
-    }
-    
     return config;
   },
+  // Performance Optimierungen
+  compress: true,
+  poweredByHeader: false,
+  generateEtags: true,
 }
 
 module.exports = nextConfig

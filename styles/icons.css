@@ -1,0 +1,46 @@
+/* Custom Icon Styles für bessere Darstellung */
+
+/* Icon Container für einheitliche Größen */
+.icon-container {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Icon Styles für verschiedene Kontexte */
+.menu-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    filter: brightness(0.8); /* Leicht abdunkeln für besseren Kontrast */
+}
+
+.menu-icon:hover {
+    filter: brightness(1) contrast(1.1);
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+}
+
+/* Für aktive Menu-Items */
+.menu-icon.active {
+    filter: brightness(1.2) saturate(1.2);
+}
+
+/* Für verschiedene Themes */
+.dark-theme .menu-icon {
+    filter: brightness(1.5) invert(1);
+}
+
+/* Icon Loading State */
+.icon-loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}

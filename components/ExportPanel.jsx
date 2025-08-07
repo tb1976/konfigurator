@@ -39,7 +39,7 @@ function ExportCard({ icon, title, description, onClick, disabled, colorClass })
 }
 
 
-export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef, flaschenConfig, onEntwurfSpeichern }) {
+export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef, flaschenConfig }) {
     const createExportCanvas = async () => {
         if (!exportableCanvas || !fabricRef?.current?.canvas || !flaschenConfig) {
             return null;
@@ -119,44 +119,8 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
 
     return (
         <div className="space-y-4 p-2">
-            <p className="text-sm text-gray-600 mb-4">Exportieren Sie Ihre fertige Flaschenkonfiguration oder speichern Sie sie als Entwurf.</p>
+            <p className="text-sm text-gray-600 mb-4">Exportieren Sie Ihre fertige Flaschenkonfiguration.</p>
             
-            <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-3">Sichern Sie Ihre aktuelle Konfiguration, um sie später weiter zu bearbeiten.</p>
-                <button
-                    onClick={onEntwurfSpeichern}
-                    disabled={!activeFlasche}
-                    className={`
-                        group w-full flex items-center border rounded-lg cursor-pointer transition-all duration-200 ease-in-out
-                        hover:-translate-y-0.5 p-3 shadow-sm hover:shadow-md
-                        ${!activeFlasche
-                            ? 'bg-gray-100 border-gray-200 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-indigo-50 to-indigo-100 border-indigo-300 hover:bg-gradient-to-r hover:from-indigo-100 hover:to-indigo-200'
-                        }
-                    `}
-                >
-                    <div className={`w-12 h-12 flex-shrink-0 flex items-center justify-center mr-3 bg-gray-50 rounded-md transition-colors ${
-                        !activeFlasche ? 'text-gray-400' : 'text-indigo-600'
-                    }`}>
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                        </svg>
-                    </div>
-                    <div className="text-left flex-grow">
-                        <h4 className={`font-medium text-sm leading-tight transition-colors ${
-                            !activeFlasche ? 'text-gray-500' : 'text-indigo-800'
-                        }`}>
-                            Aktuellen Entwurf speichern
-                        </h4>
-                        <p className={`text-xs mt-1 transition-colors ${
-                            !activeFlasche ? 'text-gray-400' : 'text-indigo-600'
-                        }`}>
-                            Sichern Sie Ihre aktuelle Konfiguration
-                        </p>
-                    </div>
-                </button>
-            </div>
-
             <div className="space-y-2">
                 <ExportCard 
                     icon={<Download size={20} />}

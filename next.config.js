@@ -1,28 +1,23 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    turbo: {},
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Production Optimierungen
+  // Vercel-optimierte Bildkonfiguration
   images: {
-    domains: ['localhost'],
-    unoptimized: false, // Für bessere Performance
+    unoptimized: true, // Für Vercel Edge Runtime
   },
-  // Canvas Support für VPS
+  // Client-side Canvas Support für Vercel
   webpack: (config, { isServer }) => {
-    // Canvas nur auf Server verfügbar machen
     if (isServer) {
+      // Server-side Canvas Unterstützung entfernen für Vercel
       config.externals = config.externals || [];
-      // Canvas als externes Modul behandeln
       config.externals.push('canvas');
     } else {
-      // Client-side fallbacks
+      // Client-side fallbacks für Browser-Canvas
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -34,10 +29,12 @@ const nextConfig = {
     
     return config;
   },
-  // Performance Optimierungen
+  // Vercel Edge Runtime Optimierungen
   compress: true,
   poweredByHeader: false,
   generateEtags: true,
+  // Output für statische Dateien optimieren
+  output: 'standalone',
 }
 
 module.exports = nextConfig

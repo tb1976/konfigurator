@@ -11,7 +11,6 @@
     "deploy": "npm run build && pm2 restart konfigurator"
   },
   "dependencies": {
-    "canvas": "^2.11.2",
     "fabric": "^6.7.1",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.536.0",

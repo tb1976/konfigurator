@@ -44,6 +44,8 @@ export default function Konfigurator({
     const [isProcessing, setIsProcessing] = useState(false);
     const [isFabricReady, setIsFabricReady] = useState(false);
     const [isEditingEtikett, setIsEditingEtikett] = useState(false);
+    const useEnhancedCurvature = true; // Permanent aktiviert - erweiterte 2D-Krümmung
+    const verticalCurveIntensity = 0.05; // Fester Wert - kein Regler mehr
     
     // Modal states
     const [showSaveDraftModal, setShowSaveDraftModal] = useState(false);
@@ -458,6 +460,8 @@ export default function Konfigurator({
             // Schatten für neuen Flaschentyp aktualisieren
             updateShadowForCurrentLabel();
             
+            // 3D-Krümmung ist permanent aktiviert - kein Neuladen mehr nötig
+            
             canvas.renderAll();
         }
     }, [activeFlasche, aktuelleFlaschenConfig]);
@@ -653,7 +657,9 @@ export default function Konfigurator({
             setEtikettZuLaden(null);
         }
     }, [etikettZuLaden, isFabricReady]);
-
+    
+    // Erweiterte Krümmung ist jetzt permanent aktiviert - kein useEffect mehr nötig
+    
     // useEffect für Korken-Updates - Entfernt, da HTML-Elemente verwendet werden
     // useEffect(() => {
     //     if (isFabricReady && fabricRef.current?.canvas) {
@@ -747,7 +753,7 @@ export default function Konfigurator({
                 setGlobalEtiketten(prev => prev.includes(originalDataUrl) ? prev : [originalDataUrl, ...prev]);
             }
 
-            const processedDataUrl = await processEtikettImage(originalDataUrl, aktuelleFlaschenConfig.etikettKrümmung);
+            const processedDataUrl = await processEtikettImage(originalDataUrl, aktuelleFlaschenConfig.etikettKrümmung, useEnhancedCurvature, verticalCurveIntensity);
 
             const shadowSrc = aktuelleFlaschenConfig.shadowSrc || '/images/shadow.png';
             const [etikettImg, schattenImg] = await Promise.all([
@@ -812,7 +818,10 @@ export default function Konfigurator({
 
             canvas.add(etikettImg, schattenImg);
             
-            const rerenderCanvas = () => canvas.renderAll();
+            const rerenderCanvas = () => {
+                canvas.renderAll();
+                // 3D-Verzerrung ist bereits im Bild integriert, keine zusätzlichen Updates nötig
+            };
             etikettImg.on('moving', rerenderCanvas);
             etikettImg.on('scaling', rerenderCanvas);
             etikettImg.on('rotating', rerenderCanvas);
@@ -838,6 +847,9 @@ export default function Konfigurator({
 
             canvas.renderAll();
 
+            // 3D-Verzerrung ist bereits beim Bildprocessing integriert
+            console.log("✅ Etikett mit integrierter erweiterter Krümmung geladen:", useEnhancedCurvature);
+
             // Korken/Kapsel werden als HTML-Elemente gerendert, nicht auf Canvas
 
         } catch (error) {
@@ -850,6 +862,8 @@ export default function Konfigurator({
 
     // Funktion entfernt - Korken und Kapsel werden als HTML-Elemente gerendert
     // const updateKorkenKapselOnCanvas = async () => { ... };
+
+    // Erweiterte Krümmung ist jetzt permanent aktiviert - reloadEtikettWith3DSetting Funktion nicht mehr benötigt
 
     // Hilfsfunktion zum Speichern des aktuellen Etikett-Zustands
     const speichereAktuellenEtikettZustand = () => {
@@ -1170,6 +1184,8 @@ export default function Konfigurator({
                                     />
                                 )}
                                 </div>
+                                
+                                {/* Erweiterte Krümmung ist jetzt permanent aktiviert - UI-Elemente entfernt */}
                                 
                                 {/* Bearbeitungsinfo außerhalb der Canvas */}
                                 {isEditingEtikett && (

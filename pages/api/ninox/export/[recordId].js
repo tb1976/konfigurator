@@ -1,7 +1,7 @@
 // pages/api/ninox/export/[recordId].js
 // API Endpoint für direkten Bild-Export aus Ninox-Konfiguration
 
-import { createNinoxApiIntegration } from '@/lib/ninoxIntegration';
+import { createNinoxApiIntegration } from '../../../../lib/ninoxIntegration';
 
 // Prüfe Canvas-Verfügbarkeit zur Laufzeit
 function isCanvasAvailable() {

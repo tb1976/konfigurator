@@ -1,7 +1,7 @@
 // pages/api/ninox/configuration/[recordId].js
 // API-Route für Ninox Integration
 
-import { createNinoxApiIntegration } from '@/lib/ninoxIntegration';
+import { createNinoxApiIntegration } from '../../../../lib/ninoxIntegration';
 
 export default async function handler(req, res) {
     const { recordId } = req.query;

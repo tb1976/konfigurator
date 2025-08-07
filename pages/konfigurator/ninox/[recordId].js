@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Konfigurator from '@/components/Konfigurator';
+import Konfigurator from '../../../components/Konfigurator';
 import Head from 'next/head';
 
 export default function NinoxKonfigurator() {

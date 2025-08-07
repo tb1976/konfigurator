@@ -20,6 +20,15 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Record ID ist erforderlich' });
     }
 
+    // Canvas-Check: Falls Canvas nicht verfügbar ist, auf vereinfachte API weiterleiten
+    if (!isCanvasAvailable()) {
+        return res.status(501).json({ 
+            error: 'Canvas nicht verfügbar auf dieser Plattform',
+            alternative: `/api/ninox/export-simple/${recordId}`,
+            message: 'Verwenden Sie die vereinfachte Export-API'
+        });
+    }
+
     try {
         if (req.method === 'GET') {
             // Einfacher Export mit Standardeinstellungen
@@ -64,7 +73,19 @@ async function handleExport(req, res, recordId, settings) {
     // 2. Konvertiere zu Konfigurator-Format
     const configuration = mapNinoxToConfiguration(ninoxRecord);
     
-    // 3. Erstelle Canvas mit Flaschen-Konfiguration
+    // 3. Canvas dynamisch importieren
+    let createCanvas;
+    try {
+        const canvasModule = await import('canvas');
+        createCanvas = canvasModule.createCanvas;
+    } catch (error) {
+        return res.status(501).json({ 
+            error: 'Canvas nicht verfügbar',
+            alternative: `/api/ninox/export-simple/${recordId}`
+        });
+    }
+    
+    // 4. Erstelle Canvas mit Flaschen-Konfiguration
     const canvas = createCanvas(settings.width, settings.height);
     const ctx = canvas.getContext('2d');
     

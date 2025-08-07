@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "flaschen-konfigurator",
   "builds": [
     {
       "src": "package.json",
@@ -21,10 +20,5 @@
     "NINOX_API_KEY": "@ninox-api-key",
     "NINOX_TEAM_ID": "@ninox-team-id", 
     "NINOX_DATABASE_ID": "@ninox-database-id"
-  },
-  "functions": {
-    "pages/api/**/*.js": {
-      "maxDuration": 30
-    }
   }
 }

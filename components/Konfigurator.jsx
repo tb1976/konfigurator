@@ -34,6 +34,14 @@ export default function Konfigurator({
         const params = new URLSearchParams(window.location.search);
         console.log("🔗 Initiale URL-Parameter:", Object.fromEntries(params.entries()));
         
+        // Debug: Etikett-Parameter explizit prüfen
+        const etikettSrc = params.get('etikettSrc');
+        console.log("🖼️ Etikett-Parameter Debug:", {
+            etikettSrc: etikettSrc,
+            etikettSrcDecoded: etikettSrc ? decodeURIComponent(etikettSrc) : null,
+            hasEtikettSrc: params.has('etikettSrc')
+        });
+        
         return {
             flasche: params.get('flasche') || null,
             korken: params.get('korken') || null,
@@ -44,7 +52,7 @@ export default function Konfigurator({
                          ? params.get('weinfarbe') 
                          : '#FF6B6B'),
             // Etikett-Parameter (sowohl externe URLs als auch IDs)
-            etikettSrc: params.get('etikettSrc') || null,
+            etikettSrc: params.get('etikettSrc') ? decodeURIComponent(params.get('etikettSrc')) : null,
             etikettId: params.get('etikettId') || null,  // Neue Option für Server-gespeicherte Etiketten
             etikettTop: params.get('etikettTop') ? parseFloat(params.get('etikettTop')) : null,
             etikettLeft: params.get('etikettLeft') ? parseFloat(params.get('etikettLeft')) : null,
@@ -121,7 +129,12 @@ export default function Konfigurator({
         'bg75optima': 'flasche2',    // Burgunder Canela
         'bd75optima': 'flasche4',    // Bordeaux 1 Canela
         'bd75prestige': 'flasche6',  // Bordeaux 2 Canela
-        'paris75': 'flasche7'        // Paris Transparent
+        'paris75': 'flasche7',       // Paris Transparent
+        // Auch direkte interne IDs unterstützen
+        'flasche2': 'flasche2',
+        'flasche4': 'flasche4', 
+        'flasche6': 'flasche6',
+        'flasche7': 'flasche7'
     };
 
     // Mapping von externen Korken-Namen zu internen IDs
@@ -129,7 +142,12 @@ export default function Konfigurator({
         'natur': 'korkNatur',
         'natur2': 'korkNatur2', 
         'mikro': 'korkMikro',
-        'brand': 'korkBrand'
+        'brand': 'korkBrand',
+        // Auch direkte interne IDs unterstützen
+        'korkNatur': 'korkNatur',
+        'korkNatur2': 'korkNatur2',
+        'korkMikro': 'korkMikro',
+        'korkBrand': 'korkBrand'
     };
 
     // Mapping von externen Kapsel-Namen zu internen IDs
@@ -141,14 +159,28 @@ export default function Konfigurator({
         'rot': 'kapselRot',
         'schwarz': 'kapselSchwMatt',
         'weiss': 'kapselWeiss',
-        'keine': 'noCapsule'
+        'keine': 'noCapsule',
+        // Auch direkte interne IDs unterstützen
+        'kapselGold': 'kapselGold',
+        'kapselSilber': 'kapselSilber', 
+        'kapselKupfer': 'kapselKupfer',
+        'kapselBlau': 'kapselBlau',
+        'kapselRot': 'kapselRot',
+        'kapselSchwMatt': 'kapselSchwMatt',
+        'kapselWeiss': 'kapselWeiss',
+        'keineKapsel': 'noCapsule',
+        'noCapsule': 'noCapsule'
     };
 
     // Mapping von externen Weinfarben-Namen zu internen IDs
     const weinfarbenNameMapping = {
         'weiss': 'blanco',
         'rose': 'rosado', 
-        'rot': 'tinto'
+        'rot': 'tinto',
+        // Auch direkte interne IDs unterstützen
+        'blanco': 'blanco',
+        'rosado': 'rosado',
+        'tinto': 'tinto'
     };
 
     // Wandle externe Namen in interne IDs um
@@ -169,7 +201,8 @@ export default function Konfigurator({
     console.log("🔄 Mapping-Debug:", {
         external: { flasche: activeFlasche, korken: activeKorken, kapsel: activeKapsel, weinfarbe: activeWeinfarbe },
         internal: { flasche: internalFlaschenId, korken: internalKorkenId, kapsel: internalKapselId, weinfarbe: internalWeinfarbe },
-        flaschenConfig: internalFlaschenId ? `${BOTTLE_DATA[internalFlaschenId]?.name} (${internalFlaschenId})` : 'null'
+        flaschenConfig: internalFlaschenId ? `${BOTTLE_DATA[internalFlaschenId]?.name} (${internalFlaschenId})` : 'null',
+        urlParams: typeof window !== 'undefined' ? Object.fromEntries(new URLSearchParams(window.location.search).entries()) : 'server-side'
     });
     
     const aktuelleFlaschenConfig = internalFlaschenId ? BOTTLE_DATA[internalFlaschenId] : null;
@@ -586,6 +619,14 @@ export default function Konfigurator({
 
                     if (etikettCanvasRef.current && document.contains(etikettCanvasRef.current)) {
                         console.log("✅ Canvas-Element bestätigt im DOM, erstelle Fabric-Instanz...");
+                        
+                        // Prüfe, ob bereits eine Fabric-Instanz existiert und dispose sie
+                        if (fabricRef.current?.canvas) {
+                            console.log("🧹 Dispose alte Fabric-Instanz vor Neuerstellung...");
+                            fabricRef.current.canvas.dispose();
+                            fabricRef.current = null;
+                        }
+                        
                         const canvas = new fabric.Canvas(etikettCanvasRef.current);
                         fabricRef.current = { lib: fabric, canvas: canvas };
 
@@ -835,12 +876,27 @@ export default function Konfigurator({
             return;
         }
 
+        // Markiere initiale Ladung als abgeschlossen
+        // Bei URL-Parametern oder leerem Zustand sofort bereit für URL-Updates
+        setTimeout(() => setInitialLoadComplete(true), 3000); // Verlängert auf 3 Sekunden
+
+    }, [initialConfig, customerId]);
+
+    // Separater useEffect für URL-Parameter-Verarbeitung
+    useEffect(() => {
+        console.log("🔄 URL-Parameter useEffect ausgelöst:", {
+            windowUndefined: typeof window === 'undefined',
+            initialConfig: !!initialConfig,
+            hasMounted: hasMounted
+        });
+        
+        // Sicherstellen, dass der Code nur im Browser läuft
+        if (typeof window === 'undefined' || initialConfig || !hasMounted) return;
+
         const params = new URLSearchParams(window.location.search);
         console.log("🔗 URL-Parameter für komplexe Werte:", Object.fromEntries(params.entries()));
         console.log("🔗 Vollständige URL:", window.location.href);
-        
-        // Basis-Parameter wurden bereits beim useState gesetzt
-        // Hier verarbeiten wir nur noch komplexere Parameter
+        console.log("🔗 Parameter-Anzahl:", params.size);
         
         // Für weinSettings (komplexeres Objekt)
         if (params.has('weinSettings')) {
@@ -853,64 +909,70 @@ export default function Konfigurator({
             }
         }
 
-        // Etikett laden - mit verbesserter Parameter-Unterstützung
+        // Etikett laden - mit verbesserter Parameter-Unterstützung 
+        console.log("🔍 Etikett-Parameter-Check:", {
+            hasEtikettSrc: params.has('etikettSrc'),
+            hasEtikettId: params.has('etikettId'),
+            etikettSrcValue: params.get('etikettSrc'),
+            etikettIdValue: params.get('etikettId')
+        });
+        
         if (params.has('etikettSrc') || params.has('etikettId')) {
-            const etikett = {
+            const etikettFromUrl = {
                 src: params.has('etikettSrc') 
                     ? decodeURIComponent(params.get('etikettSrc'))
-                    : `/api/etikett/${params.get('etikettId')}`, // Server-URL für gespeicherte Etiketten
+                    : `/api/etikett/${params.get('etikettId')}`,
                 id: params.get('etikettId') || null,
-                top: parseFloat(params.get('etikettTop')) || 0,
-                left: parseFloat(params.get('etikettLeft')) || 0,
-                scaleX: parseFloat(params.get('etikettScaleX')) || 1,
-                scaleY: parseFloat(params.get('etikettScaleY')) || 1,
-                rotation: parseFloat(params.get('etikettRotation')) || 0,
-            };
-            console.log("🏷️ Etikett aus URL geladen:", etikett);
-            
-            // Warte auf Fabric-Initialisierung mit Retry-Logik
-            let retryCount = 0;
-            const maxRetries = 50; // Maximum 10 Sekunden warten
-            
-            const loadEtikett = () => {
-                retryCount++;
-                
-                const fabricExists = !!fabricRef.current;
-                const canvasExists = !!fabricRef.current?.canvas;
-                const fabricReady = isFabricReady;
-                
-                console.log(`🔍 Fabric Debug (${retryCount}/${maxRetries}):`, {
-                    fabricExists,
-                    canvasExists, 
-                    fabricReady,
-                    etikettSrc: etikett.src
-                });
-                
-                if (fabricRef.current?.canvas && isFabricReady) {
-                    console.log("✅ Fabric bereit, lade Etikett aus URL...");
-                    handleEtikettUpload(etikett.src, { ...etikett });
-                    return;
-                }
-                
-                if (retryCount >= maxRetries) {
-                    console.warn("⚠️ Timeout: Fabric-Initialisierung dauert zu lange, überspringe Etikett-Loading");
-                    return;
-                }
-                
-                setTimeout(loadEtikett, 200);
+                // Nur setzen wenn explizit in URL vorhanden, sonst undefined lassen für Standard-Werte
+                top: params.has('etikettTop') ? parseFloat(params.get('etikettTop')) : undefined,
+                left: params.has('etikettLeft') ? parseFloat(params.get('etikettLeft')) : undefined,
+                scaleX: params.has('etikettScaleX') ? parseFloat(params.get('etikettScaleX')) : undefined,
+                scaleY: params.has('etikettScaleY') ? parseFloat(params.get('etikettScaleY')) : undefined,
+                rotation: params.has('etikettRotation') ? parseFloat(params.get('etikettRotation')) : undefined,
             };
             
-            // Starte nach kurzer Verzögerung
-            setTimeout(loadEtikett, 100);
+            console.log("🏷️ Etikett aus URL geladen, speichere für späteren Upload:", etikettFromUrl);
+            
+            // Speichere das Etikett für den Upload, nachdem der Canvas bereit ist
+            setEtikettZuLaden(etikettFromUrl);
+            console.log("✅ setEtikettZuLaden wurde aufgerufen");
+        } else {
+            console.log("❌ Keine Etikett-Parameter gefunden");
         }
 
-        // Markiere initiale Ladung als abgeschlossen
-        // Bei URL-Parametern oder leerem Zustand sofort bereit für URL-Updates
-        setTimeout(() => setInitialLoadComplete(true), 50);
+        // WICHTIG: Wenn URL-Parameter vorhanden sind, simuliere Flaschenwechsel 
+        // um sicherzustellen, dass der korrekte Canvas erstellt wird
+        console.log("🔍 Flaschenwechsel-Check:", {
+            paramsSize: params.size,
+            hasFlasche: params.has('flasche'),
+            flascheValue: params.get('flasche'),
+            currentActiveFlasche: activeFlasche
+        });
+        
+        if (params.size > 0 && params.has('flasche')) {
+            const urlFlasche = params.get('flasche');
+            const mappedFlasche = flaschenNameMapping[urlFlasche] || urlFlasche || 'flasche1';
+            
+            console.log("🔄 Simuliere Flaschenwechsel für URL-Parameter-Initialisierung:", {
+                urlFlasche,
+                mappedFlasche,
+                currentActiveFlasche: activeFlasche
+            });
+            
+            // Force re-trigger der Flaschenwechsel-Pipeline durch kurzzeitiges Zurücksetzen
+            setActiveFlasche(null);
+            setTimeout(() => {
+                console.log("🎯 Setze Flasche auf:", mappedFlasche);
+                setActiveFlasche(mappedFlasche);
+                console.log("✅ Flaschenwechsel-Pipeline für URL-Parameter ausgelöst");
+            }, 50);
+        } else {
+            console.log("❌ Kein Flaschenwechsel ausgelöst - Bedingungen nicht erfüllt");
+        }
 
-    }, [initialConfig, customerId]);
+    }, [hasMounted]); // Läuft nur einmal, wenn hasMounted true wird
 
-    // Automatische URL-Aktualisierung bei State-Änderungen
+    // Automatische URL-Aktualisierung bei State-Änderungen (ohne Etikett-Parameter zu überschreiben)
     useEffect(() => {
         if (typeof window === 'undefined' || !hasMounted || !initialLoadComplete) return;
         
@@ -918,13 +980,40 @@ export default function Konfigurator({
         const currentParams = new URLSearchParams(window.location.search);
         const newParams = new URLSearchParams(currentUrl.split('?')[1] || '');
         
+        // Bewahre original Etikett-Parameter wenn noch kein Etikett geladen wurde
+        const currentEtikett = getCurrentEtikettState();
+        if (!currentEtikett && currentParams.has('etikettSrc')) {
+            newParams.set('etikettSrc', currentParams.get('etikettSrc'));
+        }
+        if (!currentEtikett && currentParams.has('etikettId')) {
+            newParams.set('etikettId', currentParams.get('etikettId'));
+        }
+        
+        // Bewahre auch Etikett-Positionsparameter
+        if (currentParams.has('etikettTop') && !newParams.has('etikettTop')) {
+            newParams.set('etikettTop', currentParams.get('etikettTop'));
+        }
+        if (currentParams.has('etikettLeft') && !newParams.has('etikettLeft')) {
+            newParams.set('etikettLeft', currentParams.get('etikettLeft'));
+        }
+        if (currentParams.has('etikettScaleX') && !newParams.has('etikettScaleX')) {
+            newParams.set('etikettScaleX', currentParams.get('etikettScaleX'));
+        }
+        if (currentParams.has('etikettScaleY') && !newParams.has('etikettScaleY')) {
+            newParams.set('etikettScaleY', currentParams.get('etikettScaleY'));
+        }
+        if (currentParams.has('etikettRotation') && !newParams.has('etikettRotation')) {
+            newParams.set('etikettRotation', currentParams.get('etikettRotation'));
+        }
+        
         // Nur aktualisieren, wenn sich Parameter geändert haben
         const currentParamString = currentParams.toString();
         const newParamString = newParams.toString();
         
         if (currentParamString !== newParamString) {
-            console.log("🔄 URL wird aktualisiert:", currentUrl);
-            window.history.replaceState({}, '', currentUrl);
+            const updatedUrl = `${window.location.origin}${window.location.pathname}?${newParamString}`;
+            console.log("🔄 URL wird aktualisiert:", updatedUrl);
+            window.history.replaceState({}, '', updatedUrl);
         }
     }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, hasMounted, initialLoadComplete]);
 
@@ -954,15 +1043,49 @@ export default function Konfigurator({
 
     // Ein useEffect-Hook, der auf das Laden eines Etiketts wartet
     useEffect(() => {
+        console.log("🔄 EtikettZuLaden useEffect ausgelöst:", {
+            etikettZuLaden: etikettZuLaden,
+            isFabricReady: isFabricReady,
+            condition: etikettZuLaden && isFabricReady
+        });
+        
         // Dieser Hook läuft, wenn `etikettZuLaden` gesetzt wurde UND `isFabricReady` true wird
         if (etikettZuLaden && isFabricReady) {
-            console.log("✅ Fabric ist bereit, lade das vorgemerkte Etikett.");
+            console.log("✅ Fabric ist bereit, lade das vorgemerkte Etikett über normale Upload-Pipeline:", etikettZuLaden);
             
+            // Debug: Welcher Canvas wird verwendet?
+            if (fabricRef.current?.canvas) {
+                const canvas = fabricRef.current.canvas;
+                const canvasElement = canvas.getElement();
+                console.log("🔍 Canvas Debug:", {
+                    canvasWidth: canvas.getWidth(),
+                    canvasHeight: canvas.getHeight(),
+                    canvasElementId: canvasElement?.id,
+                    canvasElementClass: canvasElement?.className,
+                    isEtikettCanvas: canvasElement === etikettCanvasRef.current,
+                    etikettCanvasExists: !!etikettCanvasRef.current
+                });
+            }
+            
+            // Nutze die gleiche Pipeline wie beim Drag & Drop Upload
+            // Das zeigt automatisch den Ladebalken und nutzt den korrekten Canvas
+            setShowDragDropModal(true);
+            
+            // Nutze die URL direkt mit handleEtikettUpload (unterstützt fileOrDataUrl)
             handleEtikettUpload(etikettZuLaden.src, {
                 top: etikettZuLaden.top,
                 left: etikettZuLaden.left,
                 scaleX: etikettZuLaden.scaleX,
                 scaleY: etikettZuLaden.scaleY,
+            }).then(() => {
+                console.log("✅ URL-Etikett erfolgreich über normale Pipeline geladen");
+            }).catch((error) => {
+                console.error("❌ Fehler beim URL-Etikett Upload:", error);
+            }).finally(() => {
+                // Modal nach Upload schließen (wie beim normalen Drag & Drop)
+                setTimeout(() => {
+                    setShowDragDropModal(false);
+                }, 500);
             });
 
             // Wichtig: Setze den temporären State zurück, nachdem das Etikett geladen wurde,
@@ -1110,8 +1233,14 @@ export default function Konfigurator({
     const handleEtikettUpload = async (fileOrDataUrl, position = {}) => {
         console.log("🚀 handleEtikettUpload aufgerufen");
     
-        if (!isFabricReady || !fileOrDataUrl || !fabricRef.current?.canvas) {
-            console.error("❌ Upload blockiert.");
+        if (!fileOrDataUrl || !fabricRef.current?.canvas) {
+            console.error("❌ Upload blockiert - fehlende Daten oder Canvas nicht bereit.");
+            console.error("Debug:", { 
+                hasFileOrDataUrl: !!fileOrDataUrl, 
+                hasFabricRef: !!fabricRef.current, 
+                hasCanvas: !!fabricRef.current?.canvas,
+                isFabricReady: isFabricReady 
+            });
             alert("Der Konfigurator ist nicht bereit oder bereits beschäftigt.");
             return;
         }

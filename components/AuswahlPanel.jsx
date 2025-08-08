@@ -489,7 +489,7 @@ export default function AuswahlPanel({
             </div>
 
             <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-white">
-                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v1.0.3</div>
+                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v1.0.4</div>
             </div>
         </div>
     );

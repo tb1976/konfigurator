@@ -1,7 +1,8 @@
 // components/ExportPanel.jsx
 "use client";
 
-import { Download, Mail, Share2, Link as LinkIcon } from 'lucide-react';
+import { Download, Mail, Share2, Link as LinkIcon, Settings } from 'lucide-react';
+import { useState } from 'react';
 
 function ExportCard({ icon, title, description, onClick, disabled, colorClass }) {
     return (
@@ -40,12 +41,38 @@ function ExportCard({ icon, title, description, onClick, disabled, colorClass })
 
 
 export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef, flaschenConfig }) {
-    const createExportCanvas = async () => {
+    const [exportSize, setExportSize] = useState('display'); // 'display', 'original'
+    
+    // Exportgrößen definieren
+    const getExportOptions = () => {
+        // Original-Seitenverhältnis: 960 x 3000 = 1:3.125
+        const aspectRatio = 3000 / 960; // 3.125
+        
+        return {
+            display: {
+                label: 'Display-Größe (700px)',
+                description: 'Wie auf dem Bildschirm angezeigt',
+                width: Math.round(700 / aspectRatio), // ca. 224px Breite
+                height: 700
+            },
+            original: {
+                label: 'Original-Größe (3000px)',
+                description: 'Vollauflösung für Druck',
+                width: 960, // Original-Breite
+                height: 3000 // Original-Höhe
+            }
+        };
+    };
+
+    const createExportCanvas = async (selectedSize = exportSize) => {
         if (!exportableCanvas || !fabricRef?.current?.canvas || !flaschenConfig) {
             return null;
         }
 
         try {
+            const exportOptions = getExportOptions();
+            const sizeConfig = exportOptions[selectedSize];
+            
             const { domToPng } = await import('modern-screenshot');
             const flaschenContainer = document.querySelector('[data-konfigurator-flasche]');
             if (!flaschenContainer) {
@@ -53,9 +80,10 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 return null;
             }
 
+            // Erstelle zunächst ein hochauflösendes Bild
             const dataUrl = await domToPng(flaschenContainer, {
                 quality: 1.0,
-                pixelRatio: 2,
+                pixelRatio: 4, // Hohe Auflösung für bessere Qualität beim Skalieren
                 style: { transform: 'none' }
             });
 
@@ -64,9 +92,24 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
+                    
+                    // Setze die exakte gewünschte Export-Größe
+                    canvas.width = sizeConfig.width;
+                    canvas.height = sizeConfig.height;
+                    
+                    // Hochqualitative Skalierung aktivieren
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    
+                    // Skaliere das hochauflösende Bild auf die gewünschte Größe
+                    ctx.drawImage(img, 0, 0, sizeConfig.width, sizeConfig.height);
+                    
+                    console.log('Export Canvas erstellt:', {
+                        gewünschteGröße: `${sizeConfig.width}x${sizeConfig.height}`,
+                        tatsächlicheGröße: `${canvas.width}x${canvas.height}`,
+                        originalBildGröße: `${img.width}x${img.height}`
+                    });
+                    
                     resolve(canvas);
                 };
                 img.src = dataUrl;
@@ -83,8 +126,14 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
             alert("Export fehlgeschlagen.");
             return;
         }
+        
+        const exportOptions = getExportOptions();
+        const sizeConfig = exportOptions[exportSize];
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        const filename = `flaschen-konfiguration-${sizeConfig.height}px-${timestamp}.png`;
+        
         const link = document.createElement('a');
-        link.download = 'flaschen-konfiguration.png';
+        link.download = filename;
         link.href = finalCanvas.toDataURL('image/png', 1.0);
         link.click();
     };
@@ -97,10 +146,12 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
         }
         if (navigator.share) {
             finalCanvas.toBlob((blob) => {
-                const file = new File([blob], 'flaschen-konfiguration.png', { type: 'image/png' });
+                const exportOptions = getExportOptions();
+                const sizeConfig = exportOptions[exportSize];
+                const file = new File([blob], `flaschen-konfiguration-${sizeConfig.height}px.png`, { type: 'image/png' });
                 navigator.share({
                     title: 'Meine Flaschenkonfiguration',
-                    text: 'Schau dir meine Flaschenkonfiguration an!',
+                    text: `Schau dir meine Flaschenkonfiguration an! (${sizeConfig.label})`,
                     files: [file]
                 }).catch(e => console.log("Share-Fehler", e));
             }, 'image/png');
@@ -121,11 +172,40 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
         <div className="space-y-4 p-2">
             <p className="text-sm text-gray-600 mb-4">Exportieren Sie Ihre fertige Flaschenkonfiguration.</p>
             
+            {/* Export-Größe Auswahl */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Export-Größe auswählen:
+                </label>
+                <div className="space-y-2">
+                    {Object.entries(getExportOptions()).map(([key, option]) => (
+                        <label key={key} className="flex items-start space-x-3 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="exportSize"
+                                value={key}
+                                checked={exportSize === key}
+                                onChange={(e) => setExportSize(e.target.value)}
+                                className="mt-1 text-blue-600"
+                            />
+                            <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {option.label}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    {option.description} • {option.width} × {Math.round(option.height)} px
+                                </div>
+                            </div>
+                        </label>
+                    ))}
+                </div>
+            </div>
+            
             <div className="space-y-2">
                 <ExportCard 
                     icon={<Download size={20} />}
                     title="Als PNG herunterladen"
-                    description="Hochauflösendes Bild für Druck & Web"
+                    description={`${getExportOptions()[exportSize].label} • Hochauflösung`}
                     onClick={handleDownload}
                     disabled={!isReady}
                     colorClass="text-blue-600"
@@ -133,7 +213,7 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 <ExportCard 
                     icon={<Share2 size={20} />}
                     title="Konfiguration teilen"
-                    description="Direkt über Apps wie WhatsApp teilen"
+                    description={`${getExportOptions()[exportSize].label} • Via Apps teilen`}
                     onClick={handleShare}
                     disabled={!isReady || !navigator.share}
                     colorClass="text-purple-600"

@@ -26,11 +26,11 @@ NINOX_TABLE_NAME=Flaschen
 #### Option 1: URL-Parameter (Einfach)
 ```javascript
 // In einer Ninox-Formel:
-"https://your-domain.com/konfigurator?" + 
-"bottle=" + (Flaschentyp) +
-"&cork=" + (Korkentyp) +
-"&cap=" + (Kapseltyp) +
-"&wine=" + (Weinfarbe) +
+"https://your-domain.com/?" + 
+"flasche=" + (Flaschentyp) +
+"&korken=" + (Korkentyp) +
+"&kapsel=" + (Kapseltyp) +
+"&weinfarbe=" + (Weinfarbe) +
 "&etikettSrc=" + urlEncode(EtikettURL) +
 "&filename=" + (Dateiname) +
 "&customerId=" + (Id)
@@ -39,11 +39,11 @@ NINOX_TABLE_NAME=Flaschen
 #### Option 1b: URL-Parameter mit Etikett-Position
 ```javascript
 // Vollständige Etikett-Konfiguration:
-"https://your-domain.com/konfigurator?" + 
-"bottle=" + (Flaschentyp) +
-"&cork=" + (Korkentyp) +
-"&cap=" + (Kapseltyp) +
-"&wine=" + (Weinfarbe) +
+"https://your-domain.com/?" + 
+"flasche=" + (Flaschentyp) +
+"&korken=" + (Korkentyp) +
+"&kapsel=" + (Kapseltyp) +
+"&weinfarbe=" + (Weinfarbe) +
 "&etikettSrc=" + urlEncode(EtikettURL) +
 "&etikettTop=" + (EtikettPositionY) +
 "&etikettLeft=" + (EtikettPositionX) +
@@ -63,8 +63,8 @@ NINOX_TABLE_NAME=Flaschen
 #### Option 3: Dashboard Integration
 ```javascript
 // Für eingebettete Darstellung:
-"https://your-domain.com/konfigurator?mode=dashboard&customerId=" + (Id) + 
-"&bottle=" + (Flaschentyp) + "&cork=" + (Korkentyp) + "&cap=" + (Kapseltyp)
+"https://your-domain.com/?mode=dashboard&customerId=" + (Id) + 
+"&flasche=" + (Flaschentyp) + "&korken=" + (Korkentyp) + "&kapsel=" + (Kapseltyp)
 ```
 
 ### Field Mapping
@@ -73,11 +73,12 @@ Die folgenden Ninox-Felder werden automatisch gemappt:
 
 | Ninox Feld | Konfigurator | Werte |
 |------------|--------------|-------|
-| `Flaschentyp` | bottle | bd75optima, bd75prestige, bg75optima, paris75 |
-| `Korkentyp` | cork | natur, natur2, mikro, brand |
-| `Kapseltyp` | cap | gold, silber, kupfer, blau, rot, schwarz, weiss, keine |
-| `Weinfarbe` | wine | weiss, rose, rot |
+| `Flaschentyp` | flasche | bd75optima, bd75prestige, bg75optima, paris75 |
+| `Korkentyp` | korken | natur, natur2, mikro, brand |
+| `Kapseltyp` | kapsel | gold, silber, kupfer, blau, rot, schwarz, weiss, keine |
+| `Weinfarbe` | weinfarbe | weiss, rose, rot, oder Hex-Wert (#FF6B6B) |
 | `EtikettURL` | etikettSrc | Vollständige URL zum Etikett-Bild |
+| `EtikettID` | etikettId | Server-ID für hochgeladene Etiketten |
 | `EtikettPositionX` | etikettLeft | X-Position des Etiketts (0-200) |
 | `EtikettPositionY` | etikettTop | Y-Position des Etiketts (0-400) |
 | `EtikettBreite` | etikettScaleX | Breiten-Skalierung (0.1-3.0) |
@@ -85,6 +86,49 @@ Die folgenden Ninox-Felder werden automatisch gemappt:
 | `EtikettRotation` | etikettRotation | Rotation in Grad (-180 bis 180) |
 | `Dateiname` | filename | Gewünschter Export-Dateiname (ohne Endung) |
 | `KonfiguratorURL` | - | Automatisch generiert |
+
+## Etikett-Upload Workflows
+
+### 1. **Externe URL** (Direktlink)
+```javascript
+// Etikett über externe URL einbinden
+"?flasche=bd75optima&korken=natur&etikettSrc=https://example.com/etikett.png&etikettTop=50&etikettLeft=30"
+```
+
+### 1b. **Hex-Farben für Wein**
+```javascript
+// Direkte Hex-Farbe für Weinfarbe
+"?flasche=bd75optima&korken=natur&weinfarbe=%23FF6B6B"
+
+// Equivalent zu:
+"?flasche=bd75optima&korken=natur&weinfarbe=custom&customColor=%23FF6B6B"
+```
+
+### 2. **Server-Upload mit ID** (Empfohlen für Kunden)
+```javascript
+// 1. Kunde lädt Etikett hoch → bekommt ID
+// 2. URL mit ID teilen:
+"?flasche=bd75optima&korken=natur&etikettId=ABC123&etikettTop=50&etikettLeft=30"
+
+// API für Upload:
+POST /api/etikett/upload
+// Returns: { etikettId: "ABC123", url: "/uploads/etiketten/ABC123.png" }
+```
+
+### 3. **Email-Workflow** (Base64-Upload)
+```javascript
+// Kunde konfiguriert ohne Bild:
+"?flasche=bd75optima&korken=natur&kapsel=gold&weinfarbe=rot&customerId=KUNDE123&filename=meine-flasche"
+
+// Kunde sendet Etikett per Email mit Referenz: "Konfiguration KUNDE123"
+// Positions-Parameter werden separat übermittelt
+```
+
+### 4. **URL-Parameter Priorität**
+- ✅ `etikettSrc` (externe URLs) → In URL enthalten
+- ✅ `etikettId` (Server-IDs) → In URL enthalten  
+- ❌ Base64-Uploads → Nicht in URL (zu groß)
+- ✅ Alle Positions-Parameter → Immer in URL
 
 ### API Endpoints
 
@@ -152,11 +196,11 @@ url
 
 ### Vollständige URL mit Parametern
 ```javascript
-let baseUrl := "https://your-domain.com/konfigurator?";
-let params := "bottle=" + Flaschentyp + 
-              "&cork=" + Korkentyp + 
-              "&cap=" + Kapseltyp + 
-              "&wine=" + Weinfarbe +
+let baseUrl := "https://your-domain.com/?";
+let params := "flasche=" + Flaschentyp + 
+              "&korken=" + Korkentyp + 
+              "&kapsel=" + Kapseltyp + 
+              "&weinfarbe=" + Weinfarbe +
               "&customerId=" + text(Id);
 baseUrl + params
 ```
@@ -195,18 +239,18 @@ openUrl("https://konfigurator.domain.com/konfigurator/ninox/" + text(Id))
 ### 2. Dashboard Embedding
 ```html
 <!-- In Ninox HTML View -->
-<iframe src="https://konfigurator.domain.com/konfigurator?mode=dashboard&customerId=123&bottle=bd75optima">
+<iframe src="https://konfigurator.domain.com/?mode=dashboard&customerId=123&flasche=bd75optima">
 </iframe>
 ```
 
 ### 3. Automatische URL-Generierung
 ```javascript
 // Ninox computed field "KonfiguratorURL":
-"https://konfigurator.domain.com/konfigurator?" + 
-"bottle=" + (Flaschentyp) +
-"&cork=" + (Korkentyp) +
-"&cap=" + (Kapseltyp) +
-"&wine=" + (Weinfarbe) +
+"https://konfigurator.domain.com/?" + 
+"flasche=" + (Flaschentyp) +
+"&korken=" + (Korkentyp) +
+"&kapsel=" + (Kapseltyp) +
+"&weinfarbe=" + (Weinfarbe) +
 "&filename=" + (Dateiname) +
 "&customerId=" + text(Id)
 ```
@@ -227,11 +271,11 @@ openUrl(exportUrl)
 ### 6. Vollständige URL mit Etikett
 ```javascript
 // Ninox Formel mit Etikett-URL:
-let baseUrl := "https://konfigurator.domain.com/konfigurator?";
-let params := "bottle=" + (Flaschentyp) + 
-              "&cork=" + (Korkentyp) + 
-              "&cap=" + (Kapseltyp) + 
-              "&wine=" + (Weinfarbe) +
+let baseUrl := "https://konfigurator.domain.com/?";
+let params := "flasche=" + (Flaschentyp) + 
+              "&korken=" + (Korkentyp) + 
+              "&kapsel=" + (Kapseltyp) + 
+              "&weinfarbe=" + (Weinfarbe) +
               "&etikettSrc=" + urlEncode(EtikettURL) +
               "&filename=" + (Dateiname) +
               "&customerId=" + text(Id);
@@ -280,7 +324,7 @@ Die Test-Seite bietet folgende Funktionen:
 ### Manuelle Tests
 ```javascript
 // 1. Test mit URL-Parametern
-http://localhost:3000/konfigurator?bottle=bd75optima&cork=natur&cap=gold&wine=rot&filename=test-flasche
+http://localhost:3000/?flasche=bd75optima&korken=natur&kapsel=gold&weinfarbe=rot&filename=test-flasche
 
 // 2. Test mit Ninox Record ID
 http://localhost:3000/konfigurator/ninox/test-123

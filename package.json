@@ -12,13 +12,15 @@
   },
   "dependencies": {
     "fabric": "^6.7.1",
+    "formidable": "^3.5.4",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.536.0",
     "modern-screenshot": "^4.6.5",
     "next": "15.4.5",
     "pdfjs-dist": "^5.4.54",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

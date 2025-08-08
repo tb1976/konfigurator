@@ -27,12 +27,42 @@ export default function Konfigurator({
     onSaveCallback = null,
     onCanvasReady = null
 }) {
+    // URL-Parameter sofort beim ersten Render auslesen (synchron)
+    const getInitialStateFromURL = () => {
+        if (typeof window === 'undefined' || initialConfig) return {};
+        
+        const params = new URLSearchParams(window.location.search);
+        console.log("🔗 Initiale URL-Parameter:", Object.fromEntries(params.entries()));
+        
+        return {
+            flasche: params.get('flasche') || null,
+            korken: params.get('korken') || null,
+            kapsel: params.get('kapsel') || null,
+            weinfarbe: params.get('weinfarbe') || null,
+            customColor: params.get('customColor') || 
+                        (params.get('weinfarbe') && params.get('weinfarbe').startsWith('#') 
+                         ? params.get('weinfarbe') 
+                         : '#FF6B6B'),
+            // Etikett-Parameter (sowohl externe URLs als auch IDs)
+            etikettSrc: params.get('etikettSrc') || null,
+            etikettId: params.get('etikettId') || null,  // Neue Option für Server-gespeicherte Etiketten
+            etikettTop: params.get('etikettTop') ? parseFloat(params.get('etikettTop')) : null,
+            etikettLeft: params.get('etikettLeft') ? parseFloat(params.get('etikettLeft')) : null,
+            etikettScaleX: params.get('etikettScaleX') ? parseFloat(params.get('etikettScaleX')) : null,
+            etikettScaleY: params.get('etikettScaleY') ? parseFloat(params.get('etikettScaleY')) : null,
+            etikettRotation: params.get('etikettRotation') ? parseFloat(params.get('etikettRotation')) : null,
+            filename: params.get('filename') || null
+        };
+    };
+    
+    const initialURLState = getInitialStateFromURL();
+
     // States mit neuen Weinfarben-Eigenschaften
-    const [activeFlasche, setActiveFlasche] = useState(null);
-    const [activeKorken, setActiveKorken] = useState(null);
-    const [activeKapsel, setActiveKapsel] = useState(null);
-    const [activeWeinfarbe, setActiveWeinfarbe] = useState(null);
-    const [customColor, setCustomColor] = useState('#FF6B6B');
+    const [activeFlasche, setActiveFlasche] = useState(initialURLState.flasche);
+    const [activeKorken, setActiveKorken] = useState(initialURLState.korken);
+    const [activeKapsel, setActiveKapsel] = useState(initialURLState.kapsel);
+    const [activeWeinfarbe, setActiveWeinfarbe] = useState(initialURLState.weinfarbe);
+    const [customColor, setCustomColor] = useState(initialURLState.customColor);
     const [weinSettings, setWeinSettings] = useState({
         opacity: 1.0,
         contrast: 1.5,
@@ -42,10 +72,23 @@ export default function Konfigurator({
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [isAndroid, setIsAndroid] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [processingProgress, setProcessingProgress] = useState(0);
+    const [processingMessage, setProcessingMessage] = useState('');
+    const [showDragDropModal, setShowDragDropModal] = useState(false);
     const [isFabricReady, setIsFabricReady] = useState(false);
     const [isEditingEtikett, setIsEditingEtikett] = useState(false);
+    const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Neuer State für initiale Ladung
+    const [processedEtikettCache, setProcessedEtikettCache] = useState(new Map()); // Cache für verarbeitete Etiketten
     const useEnhancedCurvature = true; // Permanent aktiviert - erweiterte 2D-Krümmung
-    const verticalCurveIntensity = 0.05; // Fester Wert - kein Regler mehr
+    const verticalCurveIntensity = 0.08; // Erhöht für bessere Sichtbarkeit bei 600px Zielauflösung
+    
+    // Hilfsfunktion für Cache-Key Generierung
+    const getCacheKey = (originalDataUrl, flaschenConfig) => {
+        const krümmungKey = JSON.stringify(flaschenConfig.etikettKrümmung);
+        const enhancedKey = useEnhancedCurvature ? '1' : '0';
+        const intensityKey = verticalCurveIntensity.toString();
+        return `${originalDataUrl.substring(0, 50)}_${activeFlasche}_${krümmungKey}_${enhancedKey}_${intensityKey}`;
+    };
     
     // Modal states
     const [showSaveDraftModal, setShowSaveDraftModal] = useState(false);
@@ -73,10 +116,65 @@ export default function Konfigurator({
     const canvasContainerRef = useRef(null);
     const flaschenContainerRef = useRef(null);
 
-    // Abgeleitete Daten
-    const aktuelleFlaschenConfig = activeFlasche ? BOTTLE_DATA[activeFlasche] : null;
-    const aktuellerKorken = activeKorken ? korkenDaten.find(k => k.id === activeKorken) : null;
-    const aktuelleKapsel = activeKapsel ? kapselDaten.find(k => k.id === activeKapsel) : null;
+    // Mapping von externen Namen zu internen IDs
+    const flaschenNameMapping = {
+        'bg75optima': 'flasche2',    // Burgunder Canela
+        'bd75optima': 'flasche4',    // Bordeaux 1 Canela
+        'bd75prestige': 'flasche6',  // Bordeaux 2 Canela
+        'paris75': 'flasche7'        // Paris Transparent
+    };
+
+    // Mapping von externen Korken-Namen zu internen IDs
+    const korkenNameMapping = {
+        'natur': 'korkNatur',
+        'natur2': 'korkNatur2', 
+        'mikro': 'korkMikro',
+        'brand': 'korkBrand'
+    };
+
+    // Mapping von externen Kapsel-Namen zu internen IDs
+    const kapselNameMapping = {
+        'gold': 'kapselGold',
+        'silber': 'kapselSilber',
+        'kupfer': 'kapselKupfer',
+        'blau': 'kapselBlau',
+        'rot': 'kapselRot',
+        'schwarz': 'kapselSchwMatt',
+        'weiss': 'kapselWeiss',
+        'keine': 'noCapsule'
+    };
+
+    // Mapping von externen Weinfarben-Namen zu internen IDs
+    const weinfarbenNameMapping = {
+        'weiss': 'blanco',
+        'rose': 'rosado', 
+        'rot': 'tinto'
+    };
+
+    // Wandle externe Namen in interne IDs um
+    const mapExternalToInternal = (externalName, mapping) => {
+        // Wenn es ein Hex-Wert ist (#RRGGBB), verwende 'custom' als Weinfarbe
+        if (externalName && externalName.startsWith('#')) {
+            return 'custom';
+        }
+        return mapping[externalName] || externalName;
+    };
+
+    // Abgeleitete Daten mit Mapping
+    const internalFlaschenId = mapExternalToInternal(activeFlasche, flaschenNameMapping);
+    const internalKorkenId = mapExternalToInternal(activeKorken, korkenNameMapping);
+    const internalKapselId = mapExternalToInternal(activeKapsel, kapselNameMapping);
+    const internalWeinfarbe = mapExternalToInternal(activeWeinfarbe, weinfarbenNameMapping);
+    
+    console.log("🔄 Mapping-Debug:", {
+        external: { flasche: activeFlasche, korken: activeKorken, kapsel: activeKapsel, weinfarbe: activeWeinfarbe },
+        internal: { flasche: internalFlaschenId, korken: internalKorkenId, kapsel: internalKapselId, weinfarbe: internalWeinfarbe },
+        flaschenConfig: internalFlaschenId ? `${BOTTLE_DATA[internalFlaschenId]?.name} (${internalFlaschenId})` : 'null'
+    });
+    
+    const aktuelleFlaschenConfig = internalFlaschenId ? BOTTLE_DATA[internalFlaschenId] : null;
+    const aktuellerKorken = internalKorkenId ? korkenDaten.find(k => k.id === internalKorkenId) : null;
+    const aktuelleKapsel = internalKapselId ? kapselDaten.find(k => k.id === internalKapselId) : null;
     const flaschenAuswahlListe = getFlaschenAuswahl();
     const [globalEtiketten, setGlobalEtiketten] = useState([]);
     const [etikettenZustand, setEtikettenZustand] = useState({});
@@ -197,9 +295,34 @@ export default function Konfigurator({
         }
     }, [isMenuOpen, isCurrentlyMobile, activeMenuId, isAndroid]);
 
+    // Zusätzlicher useEffect für URL-Parameter Initialisierung
+    useEffect(() => {
+        // Warte kurz, bis DOM vollständig geladen ist, dann force Skalierung
+        if (aktuelleFlaschenConfig && (internalKorkenId || internalKapselId)) {
+            const timer = setTimeout(() => {
+                console.log("🔄 Force-Skalierung für URL-Parameter...");
+                // Trigger resize event um Skalierung zu erzwingen
+                window.dispatchEvent(new Event('resize'));
+            }, 100);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [aktuelleFlaschenConfig, internalKorkenId, internalKapselId, hasMounted]);
+
     // Responsive Skalierung für Korken, Kapsel und Etikett-Bereich
     useLayoutEffect(() => {
-        if (!aktuelleFlaschenConfig || !flaschenContainerRef.current) return;
+        console.log("🔧 useLayoutEffect ausgeführt:", {
+            aktuelleFlaschenConfig: !!aktuelleFlaschenConfig,
+            flaschenContainer: !!flaschenContainerRef.current,
+            korkenId: internalKorkenId,
+            kapselId: internalKapselId,
+            hasMounted
+        });
+        
+        if (!aktuelleFlaschenConfig || !flaschenContainerRef.current) {
+            console.log("⏸️ Skalierung übersprungen: Fehlende Voraussetzungen");
+            return;
+        }
         
         const container = flaschenContainerRef.current;
         const actualWidth = container.offsetWidth;
@@ -216,23 +339,44 @@ export default function Konfigurator({
         console.log('🎯 Responsive Skalierung:', {
             actualWidth, actualHeight,
             originalWidth, originalHeight,
-            scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3)
+            scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3),
+            korkenVorhanden: !!internalKorkenId,
+            kapselVorhanden: !!internalKapselId,
+            flaschenConfig: !!aktuelleFlaschenConfig
         });
         
         // Skaliere Korken-Position
-        if (korkenRef.current && activeKorken) {
+        if (korkenRef.current && internalKorkenId && aktuellerKorken) {
             const korken = korkenRef.current;
             korken.style.top = (aktuelleFlaschenConfig.korkenPosition.top * scaleY) + 'px';
             korken.style.left = (aktuelleFlaschenConfig.korkenPosition.left * scaleX) + 'px';
-            korken.style.width = (60 * scaleX) + 'px';
+            korken.style.width = '60px'; // Original-Breite
+            korken.style.height = 'auto';
+            korken.style.transform = `scale(${scaleX.toFixed(3)})`;
+            korken.style.transformOrigin = 'top left';
+            
+            console.log('🔧 Korken skaliert:', {
+                position: { top: korken.style.top, left: korken.style.left },
+                originalWidth: '60px',
+                scale: scaleX.toFixed(3)
+            });
         }
         
         // Skaliere Kapsel-Position
-        if (kapselRef.current && activeKapsel) {
+        if (kapselRef.current && internalKapselId && aktuelleKapsel) {
             const kapsel = kapselRef.current;
             kapsel.style.top = (aktuelleFlaschenConfig.kapselPosition.top * scaleY) + 'px';
             kapsel.style.left = (aktuelleFlaschenConfig.kapselPosition.left * scaleX) + 'px';
-            kapsel.style.width = (aktuelleFlaschenConfig.kapselPosition.width * scaleX) + 'px';
+            kapsel.style.width = aktuelleFlaschenConfig.kapselPosition.width + 'px'; // Original-Breite aus config
+            kapsel.style.height = 'auto';
+            kapsel.style.transform = `scale(${scaleX.toFixed(3)})`;
+            kapsel.style.transformOrigin = 'top left';
+            
+            console.log('🔧 Kapsel skaliert:', {
+                position: { top: kapsel.style.top, left: kapsel.style.left },
+                originalWidth: aktuelleFlaschenConfig.kapselPosition.width + 'px',
+                scale: scaleX.toFixed(3)
+            });
         }
         
         // Skaliere Canvas-Container (Etikett-Bereich)
@@ -244,7 +388,56 @@ export default function Konfigurator({
             canvasContainer.style.height = (aktuelleFlaschenConfig.etikettCanvas.height * scaleY) + 'px';
         }
         
-    }, [aktuelleFlaschenConfig, activeKorken, activeKapsel, isCurrentlyMobile]);
+    }, [aktuelleFlaschenConfig, internalKorkenId, internalKapselId, isCurrentlyMobile]);
+
+    // Backup-Skalierung mit Timeout für URL-Parameter
+    useEffect(() => {
+        if (aktuelleFlaschenConfig && hasMounted && (internalKorkenId || internalKapselId)) {
+            // Mehrere Versuche mit zunehmenden Delays
+            const timeouts = [50, 200, 500].map(delay => 
+                setTimeout(() => {
+                    if (flaschenContainerRef.current) {
+                        console.log(`🔄 Backup-Skalierung ausgeführt nach ${delay}ms`);
+                        const container = flaschenContainerRef.current;
+                        const actualWidth = container.offsetWidth;
+                        const actualHeight = container.offsetHeight;
+                        
+                        if (actualWidth > 0 && actualHeight > 0) {
+                            const originalWidth = 220;
+                            const originalHeight = 700;
+                            const scaleX = actualWidth / originalWidth;
+                            const scaleY = actualHeight / originalHeight;
+                            
+                            // Direkte Skalierung anwenden
+                            if (korkenRef.current && internalKorkenId && aktuellerKorken) {
+                                const korken = korkenRef.current;
+                                korken.style.top = (aktuelleFlaschenConfig.korkenPosition.top * scaleY) + 'px';
+                                korken.style.left = (aktuelleFlaschenConfig.korkenPosition.left * scaleX) + 'px';
+                                korken.style.width = '60px';
+                                korken.style.height = 'auto';
+                                korken.style.transform = `scale(${scaleX.toFixed(3)})`;
+                                korken.style.transformOrigin = 'top left';
+                                console.log(`✅ Backup-Korken skaliert: scale(${scaleX.toFixed(3)})`);
+                            }
+                            
+                            if (kapselRef.current && internalKapselId && aktuelleKapsel) {
+                                const kapsel = kapselRef.current;
+                                kapsel.style.top = (aktuelleFlaschenConfig.kapselPosition.top * scaleY) + 'px';
+                                kapsel.style.left = (aktuelleFlaschenConfig.kapselPosition.left * scaleX) + 'px';
+                                kapsel.style.width = aktuelleFlaschenConfig.kapselPosition.width + 'px';
+                                kapsel.style.height = 'auto';
+                                kapsel.style.transform = `scale(${scaleX.toFixed(3)})`;
+                                kapsel.style.transformOrigin = 'top left';
+                                console.log(`✅ Backup-Kapsel skaliert: scale(${scaleX.toFixed(3)})`);
+                            }
+                        }
+                    }
+                }, delay)
+            );
+            
+            return () => timeouts.forEach(clearTimeout);
+        }
+    }, [aktuelleFlaschenConfig, internalKorkenId, internalKapselId, hasMounted, aktuellerKorken, aktuelleKapsel]);
 
     // ResizeObserver für kontinuierliche Anpassung
     useLayoutEffect(() => {
@@ -275,19 +468,25 @@ export default function Konfigurator({
                     });
                     
                     // Skaliere Korken-Position
-                    if (korkenRef.current && activeKorken) {
+                    if (korkenRef.current && internalKorkenId && aktuellerKorken) {
                         const korken = korkenRef.current;
                         korken.style.top = (aktuelleFlaschenConfig.korkenPosition.top * scaleY) + 'px';
                         korken.style.left = (aktuelleFlaschenConfig.korkenPosition.left * scaleX) + 'px';
-                        korken.style.width = (60 * scaleX) + 'px';
+                        korken.style.width = '60px';
+                        korken.style.height = 'auto';
+                        korken.style.transform = `scale(${scaleX.toFixed(3)})`;
+                        korken.style.transformOrigin = 'top left';
                     }
                     
                     // Skaliere Kapsel-Position
-                    if (kapselRef.current && activeKapsel) {
+                    if (kapselRef.current && internalKapselId && aktuelleKapsel) {
                         const kapsel = kapselRef.current;
                         kapsel.style.top = (aktuelleFlaschenConfig.kapselPosition.top * scaleY) + 'px';
                         kapsel.style.left = (aktuelleFlaschenConfig.kapselPosition.left * scaleX) + 'px';
-                        kapsel.style.width = (aktuelleFlaschenConfig.kapselPosition.width * scaleX) + 'px';
+                        kapsel.style.width = aktuelleFlaschenConfig.kapselPosition.width + 'px';
+                        kapsel.style.height = 'auto';
+                        kapsel.style.transform = `scale(${scaleX.toFixed(3)})`;
+                        kapsel.style.transformOrigin = 'top left';
                     }
                     
                     // Skaliere Canvas-Container (Etikett-Bereich)
@@ -305,7 +504,7 @@ export default function Konfigurator({
         resizeObserver.observe(flaschenContainerRef.current);
         
         return () => resizeObserver.disconnect();
-    }, [aktuelleFlaschenConfig, activeKorken, activeKapsel]);
+    }, [aktuelleFlaschenConfig, internalKorkenId, internalKapselId]);
 
     useEffect(() => {
         // Lade Entwürfe basierend auf Modus und Kunden-ID
@@ -325,8 +524,33 @@ export default function Konfigurator({
         }
     }, [customerId]);
 
+    // Canvas-Element speziell überwachen für DOM-Verfügbarkeit
+    useLayoutEffect(() => {
+        // Nur ausführen wenn Flasche ausgewählt ist aber Fabric noch nicht initialisiert
+        if (activeFlasche && !fabricRef.current && etikettCanvasRef.current) {
+            console.log("🔍 useLayoutEffect: Canvas-Element im DOM verfügbar, versuche Fabric-Initialisierung...");
+            
+            // Kurz warten um sicherzustellen, dass das Element vollständig gerendert ist
+            const timer = setTimeout(() => {
+                if (etikettCanvasRef.current && !fabricRef.current) {
+                    console.log("🚀 Starte verzögerte Fabric-Initialisierung über useLayoutEffect...");
+                    // Trigger die Fabric-Initialisierung durch State-Update
+                    setIsFabricReady(false); // Force re-render
+                }
+            }, 10);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [activeFlasche, etikettCanvasRef.current]);
+
     // Fabric.js Initialisierung
     useEffect(() => {
+        // Warte bis die Komponente vollständig gemountet ist
+        if (!hasMounted) {
+            console.log("⏳ Komponente noch nicht gemountet, warte...");
+            return;
+        }
+
         // ---- Fall 1: Keine Flasche ausgewählt (bleibt unverändert) ----
         if (!activeFlasche) {
             console.log("⏸️ Fabric-Init übersprungen - keine Flasche ausgewählt.");
@@ -342,9 +566,26 @@ export default function Konfigurator({
                     const fabricModule = await import('fabric');
                     const fabric = fabricModule.default || fabricModule;
 
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    // Erweiterte Retry-Logik mit DOM-Check
+                    let retryCount = 0;
+                    const maxRetries = 20; // Erhöht auf 20 Versuche
+                    
+                    while (retryCount < maxRetries) {
+                        // Check ob Canvas-Ref existiert UND ob es im DOM ist
+                        if (etikettCanvasRef.current && 
+                            document.contains(etikettCanvasRef.current) &&
+                            etikettCanvasRef.current.offsetParent !== null) {
+                            console.log(`✅ Canvas-Element gefunden nach ${retryCount + 1} Versuchen!`);
+                            break;
+                        }
+                        
+                        console.log(`⏳ Warte auf Canvas-Element... Versuch ${retryCount + 1}/${maxRetries}`);
+                        await new Promise(resolve => setTimeout(resolve, 50)); // Kürzere Wartezeit
+                        retryCount++;
+                    }
 
-                    if (etikettCanvasRef.current) {
+                    if (etikettCanvasRef.current && document.contains(etikettCanvasRef.current)) {
+                        console.log("✅ Canvas-Element bestätigt im DOM, erstelle Fabric-Instanz...");
                         const canvas = new fabric.Canvas(etikettCanvasRef.current);
                         fabricRef.current = { lib: fabric, canvas: canvas };
 
@@ -402,7 +643,11 @@ export default function Konfigurator({
                         }
 
                     } else {
-                        console.error("❌ Kritisches Problem: Canvas-Ref nicht gefunden.");
+                        console.error("❌ Kritisches Problem: Canvas-Element nicht verfügbar nach", maxRetries, "Versuchen.");
+                        console.error("Canvas-Ref:", etikettCanvasRef.current);
+                        console.error("Im DOM:", etikettCanvasRef.current ? document.contains(etikettCanvasRef.current) : "Ref ist null");
+                        console.error("Sichtbar:", etikettCanvasRef.current ? etikettCanvasRef.current.offsetParent !== null : "Ref ist null");
+                        return;
                     }
                 } catch (error) {
                     console.error("❌ Fehler beim Laden von Fabric:", error);
@@ -464,7 +709,7 @@ export default function Konfigurator({
             
             canvas.renderAll();
         }
-    }, [activeFlasche, aktuelleFlaschenConfig]);
+    }, [activeFlasche, aktuelleFlaschenConfig, hasMounted]);
 
     // Hilfsfunktion zum Laden einer Konfiguration aus einem Objekt
     const loadConfigurationFromObject = (config) => {
@@ -489,6 +734,9 @@ export default function Konfigurator({
                 });
             }, 500);
         }
+        
+        // Markiere initiale Ladung als abgeschlossen
+        setTimeout(() => setInitialLoadComplete(true), 50);
     };
 
     // URL-Generierung für Sharing und Kundendashboard-Integration
@@ -499,19 +747,41 @@ export default function Konfigurator({
         if (activeFlasche) params.set('flasche', activeFlasche);
         if (activeKorken) params.set('korken', activeKorken);
         if (activeKapsel) params.set('kapsel', activeKapsel);
-        if (activeWeinfarbe) params.set('weinfarbe', activeWeinfarbe);
-        if (customColor && customColor !== '#FF6B6B') params.set('customColor', customColor);
+        
+        // Intelligente Weinfarben-Behandlung
+        if (activeWeinfarbe === 'custom' && customColor && customColor !== '#FF6B6B') {
+            // Bei Custom-Farbe: Hex-Wert direkt als weinfarbe setzen
+            params.set('weinfarbe', customColor);
+        } else if (activeWeinfarbe && activeWeinfarbe !== 'custom') {
+            // Standard-Weinfarben normal setzen
+            params.set('weinfarbe', activeWeinfarbe);
+        }
         
         // Wein-Einstellungen nur wenn sie von Standard abweichen
         const defaultWeinSettings = { opacity: 1.0, contrast: 1.5, blendMode: 'multiply' };
         if (JSON.stringify(weinSettings) !== JSON.stringify(defaultWeinSettings)) {
-            params.set('weinSettings', encodeURIComponent(JSON.stringify(weinSettings)));
+            params.set('weinSettings', JSON.stringify(weinSettings)); // URLSearchParams encodiert automatisch
         }
         
-        // Etikett-Parameter
+        // Etikett-Parameter (externe URLs oder Server-IDs, keine Base64-Daten)
         const currentEtikett = getCurrentEtikettState();
         if (currentEtikett?.src) {
-            params.set('etikettSrc', encodeURIComponent(currentEtikett.src));
+            // Externe URLs direkt einbinden
+            if (currentEtikett.src.startsWith('http://') || currentEtikett.src.startsWith('https://')) {
+                params.set('etikettSrc', encodeURIComponent(currentEtikett.src));
+            }
+            // Server-gespeicherte Etiketten als ID referenzieren
+            else if (currentEtikett.id) {
+                params.set('etikettId', currentEtikett.id);
+            }
+            // Für Base64/lokale Uploads: customerId als Referenz für Email-Workflow
+            else if (customerId && currentEtikett.src.startsWith('data:')) {
+                // Hinweis für Email-Workflow: Kunde soll Etikett per Email senden
+                params.set('etikettUploadRequired', 'true');
+                params.set('customerId', customerId);
+            }
+            
+            // Positions- und Skalierungsdaten immer einbinden (unabhängig vom Bild-Typ)
             if (currentEtikett.top !== 0) params.set('etikettTop', currentEtikett.top);
             if (currentEtikett.left !== 0) params.set('etikettLeft', currentEtikett.left);
             if (currentEtikett.scaleX !== 1) params.set('etikettScaleX', currentEtikett.scaleX);
@@ -533,6 +803,8 @@ export default function Konfigurator({
         
         return {
             src: etikett.originalSrc || etikett.getSrc(),
+            processedSrc: etikett.getSrc(), // Das bereits verarbeitete Etikett speichern
+            id: etikett.etikettId || null, // Server-ID falls vorhanden
             top: etikett.top || 0,
             left: etikett.left || 0,
             scaleX: etikett.scaleX || 1,
@@ -559,31 +831,16 @@ export default function Konfigurator({
         if (initialConfig) {
             console.log("📦 Lade Konfiguration aus initialConfig:", initialConfig);
             loadConfigurationFromObject(initialConfig);
+            // Nach dem Laden der initialConfig wird initialLoadComplete bereits in loadConfigurationFromObject gesetzt
             return;
         }
 
         const params = new URLSearchParams(window.location.search);
-        console.log("🔗 URL-Parameter gefunden:", Object.fromEntries(params.entries()));
+        console.log("🔗 URL-Parameter für komplexe Werte:", Object.fromEntries(params.entries()));
+        console.log("🔗 Vollständige URL:", window.location.href);
         
-        // Hilfsfunktion, um nicht leere Parameter zu setzen
-        const setzeStateWennParamExistiert = (paramName, setStateFunction) => {
-            if (params.has(paramName)) {
-                const value = params.get(paramName);
-                console.log(`🔧 Setze ${paramName} auf:`, value);
-                setStateFunction(value);
-            }
-        };
-
-        // Kundendashboard-spezifische Parameter
-        if (params.has('customerId') && !customerId) {
-            console.log("👤 Kunden-ID aus URL:", params.get('customerId'));
-        }
-
-        setzeStateWennParamExistiert('flasche', setActiveFlasche);
-        setzeStateWennParamExistiert('korken', setActiveKorken);
-        setzeStateWennParamExistiert('kapsel', setActiveKapsel);
-        setzeStateWennParamExistiert('weinfarbe', setActiveWeinfarbe);
-        setzeStateWennParamExistiert('customColor', setCustomColor);
+        // Basis-Parameter wurden bereits beim useState gesetzt
+        // Hier verarbeiten wir nur noch komplexere Parameter
         
         // Für weinSettings (komplexeres Objekt)
         if (params.has('weinSettings')) {
@@ -597,9 +854,12 @@ export default function Konfigurator({
         }
 
         // Etikett laden - mit verbesserter Parameter-Unterstützung
-        if (params.has('etikettSrc')) {
+        if (params.has('etikettSrc') || params.has('etikettId')) {
             const etikett = {
-                src: decodeURIComponent(params.get('etikettSrc')),
+                src: params.has('etikettSrc') 
+                    ? decodeURIComponent(params.get('etikettSrc'))
+                    : `/api/etikett/${params.get('etikettId')}`, // Server-URL für gespeicherte Etiketten
+                id: params.get('etikettId') || null,
                 top: parseFloat(params.get('etikettTop')) || 0,
                 left: parseFloat(params.get('etikettLeft')) || 0,
                 scaleX: parseFloat(params.get('etikettScaleX')) || 1,
@@ -607,13 +867,66 @@ export default function Konfigurator({
                 rotation: parseFloat(params.get('etikettRotation')) || 0,
             };
             console.log("🏷️ Etikett aus URL geladen:", etikett);
-            // Wir brauchen eine kurze Verzögerung, damit Fabric initialisiert ist
-            setTimeout(() => {
-                handleEtikettUpload(etikett.src, { ...etikett });
-            }, 500);
+            
+            // Warte auf Fabric-Initialisierung mit Retry-Logik
+            let retryCount = 0;
+            const maxRetries = 50; // Maximum 10 Sekunden warten
+            
+            const loadEtikett = () => {
+                retryCount++;
+                
+                const fabricExists = !!fabricRef.current;
+                const canvasExists = !!fabricRef.current?.canvas;
+                const fabricReady = isFabricReady;
+                
+                console.log(`🔍 Fabric Debug (${retryCount}/${maxRetries}):`, {
+                    fabricExists,
+                    canvasExists, 
+                    fabricReady,
+                    etikettSrc: etikett.src
+                });
+                
+                if (fabricRef.current?.canvas && isFabricReady) {
+                    console.log("✅ Fabric bereit, lade Etikett aus URL...");
+                    handleEtikettUpload(etikett.src, { ...etikett });
+                    return;
+                }
+                
+                if (retryCount >= maxRetries) {
+                    console.warn("⚠️ Timeout: Fabric-Initialisierung dauert zu lange, überspringe Etikett-Loading");
+                    return;
+                }
+                
+                setTimeout(loadEtikett, 200);
+            };
+            
+            // Starte nach kurzer Verzögerung
+            setTimeout(loadEtikett, 100);
         }
 
+        // Markiere initiale Ladung als abgeschlossen
+        // Bei URL-Parametern oder leerem Zustand sofort bereit für URL-Updates
+        setTimeout(() => setInitialLoadComplete(true), 50);
+
     }, [initialConfig, customerId]);
+
+    // Automatische URL-Aktualisierung bei State-Änderungen
+    useEffect(() => {
+        if (typeof window === 'undefined' || !hasMounted || !initialLoadComplete) return;
+        
+        const currentUrl = generateConfigurationUrl();
+        const currentParams = new URLSearchParams(window.location.search);
+        const newParams = new URLSearchParams(currentUrl.split('?')[1] || '');
+        
+        // Nur aktualisieren, wenn sich Parameter geändert haben
+        const currentParamString = currentParams.toString();
+        const newParamString = newParams.toString();
+        
+        if (currentParamString !== newParamString) {
+            console.log("🔄 URL wird aktualisiert:", currentUrl);
+            window.history.replaceState({}, '', currentUrl);
+        }
+    }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, hasMounted, initialLoadComplete]);
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -732,6 +1045,68 @@ export default function Konfigurator({
         console.log("✅ Schatten für Flaschenwechsel aktualisiert");
     };
 
+    // Neue Upload-Funktion mit Server-ID-Generierung
+    const handleEtikettUploadWithId = async (file) => {
+        console.log("📤 Upload mit Server-ID gestartet...");
+        
+        if (!file) {
+            alert("Bitte wählen Sie eine Datei aus.");
+            return null;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('etikett', file);
+
+            const response = await fetch('/api/etikett/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload fehlgeschlagen');
+            }
+
+            const data = await response.json();
+            console.log("✅ Upload erfolgreich:", data);
+
+            // Jetzt das Etikett mit der Server-URL laden
+            await handleEtikettUpload(data.url, { id: data.etikettId });
+            
+            return data.etikettId;
+
+        } catch (error) {
+            console.error("❌ Upload-Fehler:", error);
+            alert("Upload fehlgeschlagen. Bitte versuchen Sie es erneut.");
+            return null;
+        }
+    };
+
+    // Separate Funktion für Drag & Drop auf die Flasche mit Modal
+    const handleDragDropEtikettUpload = async (file) => {
+        console.log("🚀 handleDragDropEtikettUpload aufgerufen für:", file.name);
+        
+        if (!isFabricReady || !file || !fabricRef.current?.canvas) {
+            console.error("❌ Drag & Drop Upload blockiert.");
+            alert("Der Konfigurator ist nicht bereit oder bereits beschäftigt.");
+            return;
+        }
+
+        setShowDragDropModal(true);
+        
+        try {
+            // Rufe die normale Upload-Funktion auf, die kümmert sich um alle States
+            await handleEtikettUpload(file);
+        } catch (error) {
+            console.error("Fehler beim Drag & Drop Upload:", error);
+        } finally {
+            // Modal etwas länger anzeigen, damit der Benutzer den Abschluss sieht
+            setTimeout(() => {
+                setShowDragDropModal(false);
+            }, 500);
+        }
+    };
+
     const handleEtikettUpload = async (fileOrDataUrl, position = {}) => {
         console.log("🚀 handleEtikettUpload aufgerufen");
     
@@ -741,19 +1116,129 @@ export default function Konfigurator({
             return;
         }
 
-        setIsProcessing(true);
+        const { canvas } = fabricRef.current;
+        
+        // Zusätzliche Canvas-Überprüfung
+        const canvasWidth = canvas.getWidth();
+        const canvasHeight = canvas.getHeight();
+        
+        if (canvasWidth <= 0 || canvasHeight <= 0) {
+            console.error("❌ Canvas hat ungültige Dimensionen:", { canvasWidth, canvasHeight });
+            alert("Canvas ist nicht korrekt initialisiert. Bitte versuchen Sie es erneut.");
+            return;
+        }
+        
+        console.log("✅ Canvas-Bereitschaftscheck bestanden:", { canvasWidth, canvasHeight });
+
+        // Prüfe ob Processing übersprungen werden soll (für bereits verarbeitete Etiketten)
+        const skipProcessing = position.skipProcessing || false;
+        
+        if (!skipProcessing) {
+            setIsProcessing(true);
+            setProcessingProgress(0);
+            setProcessingMessage('Lade Etikett...');
+        }
+        
         try {
             const { lib: fabric, canvas } = fabricRef.current;
             
+            // Debug: Canvas-Überprüfung VOR der Verarbeitung
+            console.log('🔍 Canvas-Info VOR PDF-Verarbeitung:', {
+                canvasElement: canvas.getElement(),
+                canvasParent: canvas.getElement().parentNode,
+                canvasId: canvas.getElement().id,
+                canvasClass: canvas.getElement().className,
+                etikettCanvasRef: etikettCanvasRef.current,
+                isEtikettCanvas: canvas.getElement() === etikettCanvasRef.current,
+                canvasContainer: canvasContainerRef.current,
+                skipProcessing: skipProcessing
+            });
+            
             let originalDataUrl;
-            if (typeof fileOrDataUrl === 'string') {
-                originalDataUrl = fileOrDataUrl;
+            let processedDataUrl;
+            
+            // Wenn Processing übersprungen wird, ist fileOrDataUrl bereits das verarbeitete Bild
+            if (skipProcessing) {
+                console.log("⚡ Überspringe Bildverarbeitung - verwende bereits verarbeitetes Etikett");
+                processedDataUrl = fileOrDataUrl;
+                originalDataUrl = fileOrDataUrl; // Für Kompatibilität
             } else {
-                originalDataUrl = await readFileAsDataURL(fileOrDataUrl);
-                setGlobalEtiketten(prev => prev.includes(originalDataUrl) ? prev : [originalDataUrl, ...prev]);
-            }
+                // PDF-Verarbeitung
+                if (typeof fileOrDataUrl !== 'string' && fileOrDataUrl.type === 'application/pdf') {
+                    console.log("📄 PDF-Datei erkannt, starte Verarbeitung...");
+                    setProcessingMessage('PDF wird verarbeitet...');
+                    
+                    // Canvas-Validierung VOR PDF-Verarbeitung
+                    if (canvas.getElement() !== etikettCanvasRef.current) {
+                        console.error("❌ KRITISCHER FEHLER: Canvas-Referenz stimmt nicht überein!");
+                        console.error("Canvas-Element:", canvas.getElement());
+                        console.error("Erwartet (etikettCanvasRef):", etikettCanvasRef.current);
+                        throw new Error("Canvas-Referenz-Konflikt erkannt");
+                    }
+                    
+                    // Dynamischer Import der PDF-Verarbeitung
+                    const { processPdfToImage } = await import('../lib/pdfProcessor');
+                    
+                    // Progress callback für PDF-Verarbeitung
+                    const pdfProgressCallback = (percentage, message) => {
+                        console.log(`🔄 PDF Progress: ${percentage}% - ${message}`);
+                        setProcessingProgress(Math.round(percentage * 0.4)); // PDF nimmt 40% der Gesamtzeit
+                        setProcessingMessage(message);
+                    };
+                    
+                    originalDataUrl = await processPdfToImage(fileOrDataUrl, pdfProgressCallback);
+                    
+                    // Canvas-Validierung NACH PDF-Verarbeitung
+                    if (canvas.getElement() !== etikettCanvasRef.current) {
+                        console.error("❌ KRITISCHER FEHLER: Canvas-Referenz wurde während PDF-Verarbeitung geändert!");
+                        console.error("Canvas-Element:", canvas.getElement());
+                        console.error("Erwartet (etikettCanvasRef):", etikettCanvasRef.current);
+                        throw new Error("Canvas-Referenz wurde während PDF-Verarbeitung kompromittiert");
+                    }
+                    
+                    // PDF zu globalen Etiketten hinzufügen
+                    setGlobalEtiketten(prev => prev.includes(originalDataUrl) ? prev : [originalDataUrl, ...prev]);
+                    
+                } else if (typeof fileOrDataUrl === 'string') {
+                    originalDataUrl = fileOrDataUrl;
+                } else {
+                    // Normale Bilddatei
+                    originalDataUrl = await readFileAsDataURL(fileOrDataUrl);
+                    setGlobalEtiketten(prev => prev.includes(originalDataUrl) ? prev : [originalDataUrl, ...prev]);
+                }
 
-            const processedDataUrl = await processEtikettImage(originalDataUrl, aktuelleFlaschenConfig.etikettKrümmung, useEnhancedCurvature, verticalCurveIntensity);
+                // Progress callback für die Bildverarbeitung (ab 40% wenn PDF, sonst ab 0%)
+                const progressOffset = typeof fileOrDataUrl !== 'string' && fileOrDataUrl.type === 'application/pdf' ? 40 : 0;
+                const progressCallback = (percentage, message) => {
+                    console.log(`🔄 Progress: ${percentage}% - ${message}`);
+                    const adjustedPercentage = progressOffset + (percentage * (100 - progressOffset) / 100);
+                    setProcessingProgress(Math.round(adjustedPercentage));
+                    setProcessingMessage(message);
+                };
+
+                // Cache-Key für diese Konfiguration
+                const cacheKey = getCacheKey(originalDataUrl, aktuelleFlaschenConfig);
+                
+                // Prüfe Cache zuerst
+                if (processedEtikettCache.has(cacheKey)) {
+                    console.log("✅ Etikett aus Cache geladen:", cacheKey.substring(0, 30));
+                    processedDataUrl = processedEtikettCache.get(cacheKey);
+                    setProcessingProgress(100);
+                    setProcessingMessage('Aus Cache geladen!');
+                } else {
+                    console.log("🔄 Etikett wird verarbeitet und gecacht:", cacheKey.substring(0, 30));
+                    processedDataUrl = await processEtikettImage(
+                        originalDataUrl, 
+                        aktuelleFlaschenConfig.etikettKrümmung, 
+                        useEnhancedCurvature, 
+                        verticalCurveIntensity,
+                        progressCallback
+                    );
+                    
+                    // In Cache speichern
+                    setProcessedEtikettCache(prev => new Map(prev.set(cacheKey, processedDataUrl)));
+                }
+            }
 
             const shadowSrc = aktuelleFlaschenConfig.shadowSrc || '/images/shadow.png';
             const [etikettImg, schattenImg] = await Promise.all([
@@ -767,13 +1252,52 @@ export default function Konfigurator({
                 }
             });
 
+            // Verwende die TATSÄCHLICHEN Canvas-Dimensionen, nicht die Konfigurationswerte
             const canvasWidth = canvas.getWidth();
             const canvasHeight = canvas.getHeight();
+            
+            // Erweiterte Debug-Informationen
+            console.log('🔍 Canvas-Debug NACH Verarbeitung:', {
+                fabricCanvasWidth: canvas.getWidth(),
+                fabricCanvasHeight: canvas.getHeight(),
+                etikettCanvasConfigWidth: aktuelleFlaschenConfig.etikettCanvas.width,
+                etikettCanvasConfigHeight: aktuelleFlaschenConfig.etikettCanvas.height,
+                etikettCanvasConfig: aktuelleFlaschenConfig.etikettCanvas,
+                canvasElement: canvas.getElement(),
+                canvasParent: canvas.getElement().parentNode,
+                isStillEtikettCanvas: canvas.getElement() === etikettCanvasRef.current,
+                canvasContainer: canvasContainerRef.current,
+                canvasContainerStyle: canvasContainerRef.current?.style?.cssText,
+                finalCanvasPosition: {
+                    top: canvasContainerRef.current?.style?.top,
+                    left: canvasContainerRef.current?.style?.left,
+                    width: canvasContainerRef.current?.style?.width,
+                    height: canvasContainerRef.current?.style?.height
+                }
+            });
 
-            const etikettScale = Math.min(canvasWidth / etikettImg.width, canvasHeight / etikettImg.height, 0.9);
+            // Etikett auf 90% der Canvas-Breite skalieren (statt 100%)
+            const maxWidthScale = (canvasWidth * 0.9) / etikettImg.width; // 90% der Canvas-Breite
+            const maxHeightScale = canvasHeight / etikettImg.height; // Volle Canvas-Höhe erlaubt
+            const etikettScale = Math.min(maxWidthScale, maxHeightScale, 0.9);
+            
+            // Debug: Positionierung überprüfen
+            const calculatedLeft = (canvasWidth - etikettImg.width * etikettScale) / 2;
+            const calculatedTop = (canvasHeight - etikettImg.height * etikettScale) / 2;
+            console.log('🔍 Positionierungs-Debug:', {
+                canvasWidth,
+                canvasHeight,
+                etikettWidth: etikettImg.width,
+                etikettHeight: etikettImg.height,
+                etikettScale,
+                calculatedLeft,
+                calculatedTop,
+                positionParam: position
+            });
+            
             etikettImg.set({
-                left: position.left ?? (canvasWidth - etikettImg.width * etikettScale) / 2,
-                top: position.top ?? (canvasHeight - etikettImg.height * etikettScale) / 2,
+                left: position.left ?? calculatedLeft,
+                top: position.top ?? calculatedTop,
                 scaleX: position.scaleX ?? etikettScale,
                 scaleY: position.scaleY ?? etikettScale,
                 name: 'etikett',
@@ -785,6 +1309,11 @@ export default function Konfigurator({
             });
 
             etikettImg.originalSrc = originalDataUrl;
+            
+            // Etikett-ID speichern falls vorhanden
+            if (position.id) {
+                etikettImg.etikettId = position.id;
+            }
 
             const canvasRatio = canvasWidth / canvasHeight;
             const schattenRatio = schattenImg.width / schattenImg.height;
@@ -851,12 +1380,44 @@ export default function Konfigurator({
             console.log("✅ Etikett mit integrierter erweiterter Krümmung geladen:", useEnhancedCurvature);
 
             // Korken/Kapsel werden als HTML-Elemente gerendert, nicht auf Canvas
+            
+            // WICHTIG: Nach PDF-Upload die Canvas-Container-Positionierung neu berechnen
+            if (typeof fileOrDataUrl !== 'string' && fileOrDataUrl.type === 'application/pdf') {
+                console.log("🔄 Neuberechnung der Canvas-Position nach PDF-Upload...");
+                
+                // Trigger die responsive Skalierung neu
+                if (flaschenContainerRef.current && canvasContainerRef.current) {
+                    const container = flaschenContainerRef.current;
+                    const actualWidth = container.offsetWidth;
+                    const actualHeight = container.offsetHeight;
+                    const originalWidth = 220;
+                    const originalHeight = 700;
+                    const scaleX = actualWidth / originalWidth;
+                    const scaleY = actualHeight / originalHeight;
+                    
+                    const canvasContainer = canvasContainerRef.current;
+                    canvasContainer.style.top = (aktuelleFlaschenConfig.etikettCanvas.top * scaleY) + 'px';
+                    canvasContainer.style.left = (aktuelleFlaschenConfig.etikettCanvas.left * scaleX) + 'px';
+                    canvasContainer.style.width = (aktuelleFlaschenConfig.etikettCanvas.width * scaleX) + 'px';
+                    canvasContainer.style.height = (aktuelleFlaschenConfig.etikettCanvas.height * scaleY) + 'px';
+                    
+                    console.log("✅ Canvas-Container nach PDF-Upload neu positioniert:", {
+                        top: canvasContainer.style.top,
+                        left: canvasContainer.style.left,
+                        width: canvasContainer.style.width,
+                        height: canvasContainer.style.height,
+                        scaleFactors: { scaleX, scaleY }
+                    });
+                }
+            }
 
         } catch (error) {
             console.error("Fehler im Upload-Prozess:", error);
             alert("Das Etikett konnte nicht geladen werden.");
         } finally {
             setIsProcessing(false);
+            setProcessingProgress(0);
+            setProcessingMessage('');
         }
     };
 
@@ -900,9 +1461,13 @@ export default function Konfigurator({
 
     // Funktion, die aufgerufen wird, wenn ein Thumbnail geklickt wird
     const handleThumbnailClick = async (dataUrl) => {
-    await handleEtikettUpload(dataUrl);
-};
-
+        console.log("🚀 handleThumbnailClick aufgerufen - delegiert an handleEtikettUpload");
+        
+        // Einfach an handleEtikettUpload delegieren - das stellt sicher,
+        // dass die Positionierung identisch ist und der Cache funktioniert
+        await handleEtikettUpload(dataUrl, {});
+    };
+        
     const handleFlaschenWahl = (id) => {
         if (id === activeFlasche) return;
 
@@ -911,8 +1476,8 @@ export default function Konfigurator({
         
         // 2. Prüfe, ob die aktuelle Weinfarbe für die neue Flasche erlaubt ist
         const neueFlaschenConfig = BOTTLE_DATA[id];
-        if (neueFlaschenConfig && activeWeinfarbe) {
-            const istErlaubt = isWeinfarbeAllowed(activeWeinfarbe, neueFlaschenConfig.allowedWines);
+        if (neueFlaschenConfig && internalWeinfarbe) {
+            const istErlaubt = isWeinfarbeAllowed(internalWeinfarbe, neueFlaschenConfig.allowedWines);
             if (!istErlaubt) {
                 // Setze auf erste erlaubte Weinfarbe (meist 'blanco')
                 const ersteErlaubteWeinfarbe = neueFlaschenConfig.allowedWines[0] || 'blanco';
@@ -1010,23 +1575,72 @@ export default function Konfigurator({
     };
 
     // NEU: Lädt einen Entwurf
-    const handleEntwurfLaden = (entwurf) => {
-        console.log("Lade Entwurf:", entwurf.name);
+    const handleEntwurfLaden = async (entwurf) => {
+        console.log("🔄 Lade Entwurf:", entwurf.name);
 
-        // Setze alle einfachen States sofort
-        setActiveFlasche(entwurf.flasche);
-        setActiveKorken(entwurf.korken);
-        setActiveKapsel(entwurf.kapsel);
-        setActiveWeinfarbe(entwurf.weinfarbe);
-        setCustomColor(entwurf.customColor);
-        setWeinSettings(entwurf.weinSettings);
+        // Ladebalken anzeigen
+        setIsProcessing(true);
+        setProcessingProgress(10);
+        setProcessingMessage(`Lade Entwurf "${entwurf.name}"...`);
 
-        if (entwurf.etikett?.src) {
-            console.log("-> Etikett-Daten zum Laden vorgemerkt.");
-            setEtikettZuLaden(entwurf.etikett);
-        } else {
-            setEtikettZuLaden(null);
-            fabricRef.current?.canvas.clear();
+        try {
+            // Setze alle einfachen States sofort
+            setActiveFlasche(entwurf.flasche);
+            setActiveKorken(entwurf.korken);
+            setActiveKapsel(entwurf.kapsel);
+            setActiveWeinfarbe(entwurf.weinfarbe);
+            setCustomColor(entwurf.customColor);
+            setWeinSettings(entwurf.weinSettings);
+            
+            setProcessingProgress(30);
+            setProcessingMessage('Konfiguration wird geladen...');
+
+            if (entwurf.etikett?.src) {
+                console.log("-> Lade Etikett direkt ohne erneute Verarbeitung");
+                setProcessingProgress(50);
+                setProcessingMessage('Etikett wird geladen...');
+                
+                // **WICHTIG**: Prüfe ob das Etikett bereits verarbeitet wurde
+                // Falls ja, lade es direkt ohne erneute Verarbeitung
+                if (entwurf.etikett.processedSrc) {
+                    console.log("✅ Verwende bereits verarbeitetes Etikett aus Entwurf");
+                    setProcessingProgress(80);
+                    setProcessingMessage('Etikett aus Cache...');
+                    
+                    // Lade das bereits verarbeitete Etikett direkt
+                    await handleEtikettUpload(entwurf.etikett.processedSrc, {
+                        top: entwurf.etikett.top || 0,
+                        left: entwurf.etikett.left || 0,
+                        scaleX: entwurf.etikett.scaleX || 1,
+                        scaleY: entwurf.etikett.scaleY || 1,
+                        rotation: entwurf.etikett.rotation || 0,
+                        skipProcessing: true // Verhindere erneute Verarbeitung
+                    });
+                } else {
+                    console.log("-> Etikett-Daten zum Laden vorgemerkt (wird verarbeitet)");
+                    setEtikettZuLaden(entwurf.etikett);
+                }
+            } else {
+                setEtikettZuLaden(null);
+                fabricRef.current?.canvas.clear();
+            }
+            
+            setProcessingProgress(100);
+            setProcessingMessage('Entwurf geladen!');
+            
+            // Kurz warten, dann Ladebalken ausblenden
+            setTimeout(() => {
+                setIsProcessing(false);
+                setProcessingProgress(0);
+                setProcessingMessage('');
+            }, 500);
+            
+        } catch (error) {
+            console.error("❌ Fehler beim Laden des Entwurfs:", error);
+            setIsProcessing(false);
+            setProcessingProgress(0);
+            setProcessingMessage('');
+            alert(`Fehler beim Laden des Entwurfs: ${error.message}`);
         }
     };
     
@@ -1098,6 +1712,8 @@ export default function Konfigurator({
                     activeWeinfarbe={activeWeinfarbe}
                     onEtikettUpload={handleEtikettUpload}
                     isProcessingEtikett={isProcessing}
+                    processingProgress={processingProgress}
+                    processingMessage={processingMessage}
                     isFabricReady={isFabricReady}
                     exportableCanvas={exportableCanvas}
                     fabricRef={fabricRef}
@@ -1129,7 +1745,7 @@ export default function Konfigurator({
                     // Wir sind sicher, dass `aktuelleFlaschenConfig` hier existiert
                     (() => {
                         // Bestimme die richtige Flaschenbild-URL basierend auf der Weinfarbe
-                        const shouldUseDarkBottle = aktuelleFlaschenConfig.darkWineThreshold?.includes(activeWeinfarbe);
+                        const shouldUseDarkBottle = aktuelleFlaschenConfig.darkWineThreshold?.includes(internalWeinfarbe);
                         const flaschenSrc = shouldUseDarkBottle && aktuelleFlaschenConfig.srcWithDarkWine 
                             ? aktuelleFlaschenConfig.srcWithDarkWine 
                             : aktuelleFlaschenConfig.src;
@@ -1154,18 +1770,28 @@ export default function Konfigurator({
                                     e.currentTarget.classList.remove('border-blue-500', 'bg-blue-200/80');
 
                                     const file = e.dataTransfer.files[0];
-                                    if (file && file.type.startsWith('image/')) {
-                                        console.log("Etikett auf Flasche gedroppt:", file.name);
-                                        handleEtikettUpload(file);
+                                    if (file) {
+                                        // Erweiterte Validierung für Bilder und PDFs
+                                        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+                                        const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+                                        const fileName = file.name.toLowerCase();
+                                        const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+                                        
+                                        if (allowedTypes.includes(file.type) || hasValidExtension) {
+                                            console.log("Etikett auf Flasche gedroppt:", file.name, file.type);
+                                            handleDragDropEtikettUpload(file);
+                                        } else {
+                                            alert("Bitte nur Bilddateien (JPG, PNG) oder PDF-Dateien hierher ziehen.");
+                                        }
                                     } else {
-                                        alert("Bitte nur Bilddateien (JPG, PNG) hierher ziehen.");
+                                        alert("Bitte nur Bilddateien (JPG, PNG) oder PDF-Dateien hierher ziehen.");
                                     }
                                 }}
                             >
                                 <KonfiguratorAnsicht
                                     flascheSrc={flaschenSrc}
                                     inhalt={aktuelleFlaschenConfig.inhalt}
-                                    weinfarbe={activeWeinfarbe}
+                                    weinfarbe={internalWeinfarbe}
                                     customColor={debouncedCustomColor}
                                     weinSettings={debouncedWeinSettings}
                                     onCanvasReady={setExportableCanvas}
@@ -1209,10 +1835,10 @@ export default function Konfigurator({
                                 )}
                                 
                                 {/* Korken und Kapsel als HTML-Elemente mit höherem Z-Index */}
-                                {activeKorken && (
+                                {internalKorkenId && aktuellerKorken && (
                                     <img 
                                         ref={korkenRef}
-                                        src={korkenDaten.find(k=>k.id===activeKorken).src} 
+                                        src={aktuellerKorken.src} 
                                         alt="Korken" 
                                         style={{ 
                                             position: 'absolute',
@@ -1221,10 +1847,10 @@ export default function Konfigurator({
                                         className="z-30" 
                                     />
                                 )}
-                                {activeKapsel && (
+                                {internalKapselId && aktuelleKapsel && (
                                     <img 
                                         ref={kapselRef}
-                                        src={kapselDaten.find(k=>k.id===activeKapsel).src} 
+                                        src={aktuelleKapsel.src} 
                                         alt="Kapsel" 
                                         style={{ position: 'absolute' }}
                                         className="z-30" 
@@ -1237,6 +1863,27 @@ export default function Konfigurator({
                                         Etikett hierher ziehen
                                     </div>
                                 </div>
+
+                                {/* Drag & Drop Progress Modal */}
+                                {showDragDropModal && (
+                                    <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm">
+                                        <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm mx-4">
+                                            <div className="text-center">
+                                                <div className="text-blue-600 mb-3">
+                                                    <div className="animate-spin inline-block w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full mb-3"></div>
+                                                    <p className="font-medium text-lg">{processingMessage || 'Etikett wird verarbeitet...'}</p>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+                                                    <div 
+                                                        className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out" 
+                                                        style={{ width: `${Math.max(5, processingProgress)}%` }}
+                                                    ></div>
+                                                </div>
+                                                <p className="text-sm text-gray-600">{processingProgress}% abgeschlossen</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })()

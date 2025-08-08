@@ -127,7 +127,7 @@ export default function AuswahlPanel({
     flaschen, korken, kapseln, weinfarben,
     onFlascheSelect, onKorkenSelect, onKapselSelect, onWeinfarbeSelect,
     activeFlasche, activeKorken, activeKapsel, activeWeinfarbe,
-    onEtikettUpload, isProcessingEtikett, isFabricReady,
+    onEtikettUpload, isProcessingEtikett, processingProgress, processingMessage, isFabricReady,
     customColor, onCustomColorChange,
     weinSettings, onWeinSettingsChange,
     exportableCanvas, fabricRef,
@@ -151,6 +151,11 @@ export default function AuswahlPanel({
     console.log('Flaschen:', flaschen);
     console.log('Korken:', korken);
     console.log('Kapseln:', kapseln);
+    console.log('🔄 Processing Props:', {
+        isProcessingEtikett,
+        processingProgress,
+        processingMessage
+    });
 
     const menus = [
         { id: 'flaschen', label: 'Flaschen' },
@@ -400,6 +405,8 @@ export default function AuswahlPanel({
                                 <EtikettUploader 
                                     onUpload={onEtikettUpload} 
                                     isProcessing={isProcessingEtikett} 
+                                    processingProgress={processingProgress}
+                                    processingMessage={processingMessage}
                                     isReady={isFabricReady}
                                     fabricRef={fabricRef}
                                     globalEtiketten={globalEtiketten}
@@ -482,7 +489,7 @@ export default function AuswahlPanel({
             </div>
 
             <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-white">
-                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v2.0</div>
+                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v1.0.3</div>
             </div>
         </div>
     );

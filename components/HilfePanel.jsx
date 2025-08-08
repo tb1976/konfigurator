@@ -113,12 +113,6 @@ export default function HilfePanel() {
                     </div>
                 </div>
             </div>
-            
-            <div className="pt-4 border-t border-gray-200">
-                <div className="text-center text-xs text-gray-400">
-                    Flaschenkonfigurator v2.0 - Entwickelt für optimale Benutzerfreundlichkeit
-                </div>
-            </div>
         </div>
     );
 }

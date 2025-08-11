@@ -1,6 +1,7 @@
 // components/WeinfarbenPanel.jsx
 "use client";
 
+import React from 'react';
 import { useState } from 'react';
 import { isWeinfarbeAllowed } from '../lib/bottleData';
 import { useDebounce } from '../hooks/useDebounce';
@@ -74,6 +75,34 @@ function WeinfarbeCard({ farbe, onClick, isSelected, isAllowed, customColor, onC
 
 // Erweiterte Einstellungen Komponente
 function AdvancedSettings({ settings, onSettingsChange, isVisible }) {
+    // Lokale States für die Slider-Werte (ohne Debounce für UI-Responsiveness)
+    const [localOpacity, setLocalOpacity] = useState(settings.opacity || 1.0);
+    const [localContrast, setLocalContrast] = useState(settings.contrast || 1.5);
+    const [localBlendMode, setLocalBlendMode] = useState(settings.blendMode || 'multiply');
+
+    // Debounced Werte für die tatsächliche Anwendung
+    const debouncedOpacity = useDebounce(localOpacity, 250);
+    const debouncedContrast = useDebounce(localContrast, 250);
+    const debouncedBlendMode = useDebounce(localBlendMode, 250);
+
+    // Effekt um debounced Werte an Parent zu senden
+    React.useEffect(() => {
+        const newSettings = {
+            opacity: debouncedOpacity,
+            contrast: debouncedContrast,
+            blendMode: debouncedBlendMode
+        };
+        console.log('🍷 Debounced Wein-Einstellungen:', newSettings);
+        onSettingsChange?.(newSettings);
+    }, [debouncedOpacity, debouncedContrast, debouncedBlendMode, onSettingsChange]);
+
+    // Effekt um externe Änderungen zu übernehmen (z.B. beim Laden einer Konfiguration)
+    React.useEffect(() => {
+        setLocalOpacity(settings.opacity || 1.0);
+        setLocalContrast(settings.contrast || 1.5);
+        setLocalBlendMode(settings.blendMode || 'multiply');
+    }, [settings.opacity, settings.contrast, settings.blendMode]);
+
     if (!isVisible) return null;
 
     const blendModes = [
@@ -88,27 +117,6 @@ function AdvancedSettings({ settings, onSettingsChange, isVisible }) {
         { value: 'normal', label: 'Normal' }
     ];
 
-    // Fallback falls onSettingsChange undefined ist
-    const handleSettingsChange = onSettingsChange || (() => {});
-
-    const handleOpacityChange = (newValue) => {
-        const newSettings = { ...settings, opacity: newValue };
-        // console.log('Deckung geändert:', newSettings);
-        handleSettingsChange(newSettings);
-    };
-
-    const handleContrastChange = (newValue) => {
-        const newSettings = { ...settings, contrast: newValue };
-        // console.log('Kontrast geändert:', newSettings);
-        handleSettingsChange(newSettings);
-    };
-
-    const handleBlendModeChange = (newValue) => {
-        const newSettings = { ...settings, blendMode: newValue };
-        // console.log('Blend Mode geändert:', newSettings);
-        handleSettingsChange(newSettings);
-    };
-
     return (
         <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
             <h4 className="font-medium text-sm text-gray-800 mb-3">Erweiterte Einstellungen</h4>
@@ -116,21 +124,24 @@ function AdvancedSettings({ settings, onSettingsChange, isVisible }) {
             {/* Deckung */}
             <div className="mb-4">
                 <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Deckung: {Math.round(settings.opacity * 100)}%
+                    Deckung: {Math.round(localOpacity * 100)}%
+                    {localOpacity !== debouncedOpacity && (
+                        <span className="text-blue-600 ml-1">(wird angewendet...)</span>
+                    )}
                 </label>
                 <input
                     type="range"
                     min="0"
                     max="1"
                     step="0.05"
-                    value={settings.opacity || 0.8}
+                    value={localOpacity}
                     onChange={(e) => {
                         e.stopPropagation();
-                        handleOpacityChange(parseFloat(e.target.value));
+                        setLocalOpacity(parseFloat(e.target.value));
                     }}
                     onInput={(e) => {
                         e.stopPropagation();
-                        handleOpacityChange(parseFloat(e.target.value));
+                        setLocalOpacity(parseFloat(e.target.value));
                     }}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                 />
@@ -139,21 +150,24 @@ function AdvancedSettings({ settings, onSettingsChange, isVisible }) {
             {/* Kontrast */}
             <div className="mb-4">
                 <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Kontrast: {Math.round(settings.contrast * 100)}%
+                    Kontrast: {Math.round(localContrast * 100)}%
+                    {localContrast !== debouncedContrast && (
+                        <span className="text-blue-600 ml-1">(wird angewendet...)</span>
+                    )}
                 </label>
                 <input
                     type="range"
                     min="0.5"
                     max="2"
                     step="0.05"
-                    value={settings.contrast || 1.0}
+                    value={localContrast}
                     onChange={(e) => {
                         e.stopPropagation();
-                        handleContrastChange(parseFloat(e.target.value));
+                        setLocalContrast(parseFloat(e.target.value));
                     }}
                     onInput={(e) => {
                         e.stopPropagation();
-                        handleContrastChange(parseFloat(e.target.value));
+                        setLocalContrast(parseFloat(e.target.value));
                     }}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                 />
@@ -163,10 +177,13 @@ function AdvancedSettings({ settings, onSettingsChange, isVisible }) {
             <div className="mb-2">
                 <label className="block text-xs font-medium text-gray-700 mb-2">
                     Blend Modus
+                    {localBlendMode !== debouncedBlendMode && (
+                        <span className="text-blue-600 ml-1">(wird angewendet...)</span>
+                    )}
                 </label>
                 <select
-                    value={settings.blendMode}
-                    onChange={(e) => handleBlendModeChange(e.target.value)}
+                    value={localBlendMode}
+                    onChange={(e) => setLocalBlendMode(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                     {blendModes.map(mode => (
@@ -192,6 +209,32 @@ export default function WeinfarbenPanel({
 }) {
     const [showAdvanced, setShowAdvanced] = useState(false);
 
+    // Lokaler State für Custom Color mit Debouncing
+    const [localCustomColor, setLocalCustomColor] = useState(customColor);
+    const debouncedCustomColor = useDebounce(localCustomColor, 200);
+
+    // Custom Color Debouncing - sende debounced Wert an Parent
+    React.useEffect(() => {
+        if (debouncedCustomColor !== customColor) {
+            console.log('🎨 Debounced Custom Color:', debouncedCustomColor);
+            onCustomColorChange(debouncedCustomColor);
+        }
+    }, [debouncedCustomColor, customColor, onCustomColorChange]);
+
+    // Externe Änderungen am Custom Color übernehmen
+    React.useEffect(() => {
+        setLocalCustomColor(customColor);
+    }, [customColor]);
+
+    // Custom Color Change Handler mit lokalem State
+    const handleCustomColorChange = (newColor) => {
+        setLocalCustomColor(newColor);
+        // Sofort 'custom' als aktive Weinfarbe setzen für UI-Feedback
+        if (activeWeinfarbe !== 'custom') {
+            onSelect('custom');
+        }
+    };
+
     // Erweiterte Weinfarben-Liste mit Custom-Option
     const extendedWeinfarben = [
         ...weinfarben,
@@ -199,7 +242,7 @@ export default function WeinfarbenPanel({
             id: 'custom', 
             name: 'Individuelle Farbe', 
             colorClass: '', 
-            hex: customColor 
+            hex: localCustomColor // Verwende lokalen Wert für sofortiges UI-Feedback
         }
     ];
 
@@ -219,8 +262,8 @@ export default function WeinfarbenPanel({
                         onClick={onSelect}
                         isSelected={isActive}
                         isAllowed={isAllowed}
-                        customColor={customColor}
-                        onCustomColorChange={onCustomColorChange}
+                        customColor={localCustomColor} // Verwende lokalen Wert
+                        onCustomColorChange={handleCustomColorChange}
                     />
                 );
             })}

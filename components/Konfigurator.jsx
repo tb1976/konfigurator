@@ -20,12 +20,26 @@ function readFileAsDataURL(file) {
     });
 }
 
+const KONFIGURATOR_MODES = {
+    STANDALONE: 'standalone',
+    NINOX_GENERATOR: 'ninox-generator',
+    CUSTOMER_DASHBOARD: 'customer-dashboard'
+};
+
 export default function Konfigurator({ 
     initialConfig = null, 
-    mode = 'standalone', 
-    customerId = null, 
+    mode = KONFIGURATOR_MODES.STANDALONE,
+    showEtikettShop = true,
+    ninoxConfig = null,
+    onAutoExport = null,
+    customerId = null,
+    weinprofilId = null,
+    onSaveToProfile = null,
+    onLoadFromProfile = null,
     onSaveCallback = null,
-    onCanvasReady = null
+    onConfigChange = null,
+    onCanvasReady = null,
+    onComplete = null
 }) {
     // URL-Parameter sofort beim ersten Render auslesen (synchron)
     const getInitialStateFromURL = () => {
@@ -102,6 +116,19 @@ export default function Konfigurator({
     const [showSaveDraftModal, setShowSaveDraftModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [savedDraftName, setSavedDraftName] = useState('');
+
+    const [isAutoMode, setIsAutoMode] = useState(mode === KONFIGURATOR_MODES.NINOX_GENERATOR);
+    const [autoExportInProgress, setAutoExportInProgress] = useState(false);
+    const [profileData, setProfileData] = useState(null);
+    
+    // Bestimme verfügbare Features basierend auf Modus
+    const features = {
+        showEtikettShop: mode === KONFIGURATOR_MODES.STANDALONE && showEtikettShop,
+        showSaveButtons: mode !== KONFIGURATOR_MODES.NINOX_GENERATOR,
+        showExportPanel: mode !== KONFIGURATOR_MODES.NINOX_GENERATOR,
+        autoSaveToProfile: mode === KONFIGURATOR_MODES.CUSTOMER_DASHBOARD,
+        autoExportOnComplete: mode === KONFIGURATOR_MODES.NINOX_GENERATOR
+    };
 
     useEffect(() => {
     console.log("🔧 isFabricReady Status geändert:", isFabricReady);
@@ -213,8 +240,9 @@ export default function Konfigurator({
     const [etikettenZustand, setEtikettenZustand] = useState({});
     const [entwuerfe, setEntwuerfe] = useState([]);
     const [etikettZuLaden, setEtikettZuLaden] = useState(null);
+    const [urlFilename, setUrlFilename] = useState(initialURLState.filename);
 
-    const shadowOpacity = 0.28;
+    const shadowOpacity = 0.24;
 
     useEffect(() => {
         setHasMounted(true);
@@ -784,45 +812,43 @@ export default function Konfigurator({
     const generateConfigurationUrl = (baseUrl = window.location.origin + window.location.pathname) => {
         const params = new URLSearchParams();
         
+        // Mode-Parameter
+        if (mode !== KONFIGURATOR_MODES.STANDALONE) {
+            params.set('mode', mode);
+        }
+        
+        // Kunden/Profil-IDs
         if (customerId) params.set('customerId', customerId);
+        if (weinprofilId) params.set('weinprofilId', weinprofilId);
+        
+        // Konfigurationsparameter
         if (activeFlasche) params.set('flasche', activeFlasche);
         if (activeKorken) params.set('korken', activeKorken);
         if (activeKapsel) params.set('kapsel', activeKapsel);
         
-        // Intelligente Weinfarben-Behandlung
+        // Weinfarben-Behandlung
         if (activeWeinfarbe === 'custom' && customColor && customColor !== '#FF6B6B') {
-            // Bei Custom-Farbe: Hex-Wert direkt als weinfarbe setzen
             params.set('weinfarbe', customColor);
         } else if (activeWeinfarbe && activeWeinfarbe !== 'custom') {
-            // Standard-Weinfarben normal setzen
             params.set('weinfarbe', activeWeinfarbe);
         }
         
-        // Wein-Einstellungen nur wenn sie von Standard abweichen
+        // Wein-Einstellungen
         const defaultWeinSettings = { opacity: 1.0, contrast: 1.5, blendMode: 'multiply' };
         if (JSON.stringify(weinSettings) !== JSON.stringify(defaultWeinSettings)) {
-            params.set('weinSettings', JSON.stringify(weinSettings)); // URLSearchParams encodiert automatisch
+            params.set('weinSettings', JSON.stringify(weinSettings));
         }
         
-        // Etikett-Parameter (externe URLs oder Server-IDs, keine Base64-Daten)
+        // Etikett-Parameter
         const currentEtikett = getCurrentEtikettState();
         if (currentEtikett?.src) {
-            // Externe URLs direkt einbinden
             if (currentEtikett.src.startsWith('http://') || currentEtikett.src.startsWith('https://')) {
                 params.set('etikettSrc', encodeURIComponent(currentEtikett.src));
-            }
-            // Server-gespeicherte Etiketten als ID referenzieren
-            else if (currentEtikett.id) {
+            } else if (currentEtikett.id) {
                 params.set('etikettId', currentEtikett.id);
             }
-            // Für Base64/lokale Uploads: customerId als Referenz für Email-Workflow
-            else if (customerId && currentEtikett.src.startsWith('data:')) {
-                // Hinweis für Email-Workflow: Kunde soll Etikett per Email senden
-                params.set('etikettUploadRequired', 'true');
-                params.set('customerId', customerId);
-            }
             
-            // Positions- und Skalierungsdaten immer einbinden (unabhängig vom Bild-Typ)
+            // Positions- und Skalierungsdaten
             if (currentEtikett.top !== 0) params.set('etikettTop', currentEtikett.top);
             if (currentEtikett.left !== 0) params.set('etikettLeft', currentEtikett.left);
             if (currentEtikett.scaleX !== 1) params.set('etikettScaleX', currentEtikett.scaleX);
@@ -830,7 +856,261 @@ export default function Konfigurator({
             if (currentEtikett.rotation !== 0) params.set('etikettRotation', currentEtikett.rotation);
         }
         
+        // Filename für Export
+        if (urlFilename) params.set('filename', urlFilename);
+        
         return `${baseUrl}?${params.toString()}`;
+    };
+
+    const generateConfigData = () => {
+        const currentEtikett = getCurrentEtikettState();
+        
+        return {
+            // Basis-Konfiguration
+            flasche: activeFlasche,
+            korken: activeKorken,
+            kapsel: activeKapsel,
+            weinfarbe: activeWeinfarbe,
+            customColor: customColor,
+            weinSettings: weinSettings,
+            
+            // Etikett-Daten
+            etikett: currentEtikett ? {
+                id: currentEtikett.id,
+                src: currentEtikett.src,
+                position: {
+                    top: currentEtikett.top,
+                    left: currentEtikett.left,
+                    scaleX: currentEtikett.scaleX,
+                    scaleY: currentEtikett.scaleY,
+                    rotation: currentEtikett.rotation
+                }
+            } : null,
+            
+            // Metadaten
+            timestamp: new Date().toISOString(),
+            mode: mode,
+            customerId: customerId,
+            weinprofilId: weinprofilId,
+            shareUrl: generateConfigurationUrl()
+        };
+    };
+
+    // Auto-Export für Ninox-Generator Modus
+    const performAutoExport = async () => {
+        if (!onAutoExport || autoExportInProgress) return;
+        
+        setAutoExportInProgress(true);
+        setProcessingMessage('Erstelle Flaschen-Export für Ninox...');
+        setIsProcessing(true);
+        
+        try {
+            // Canvas export
+            const { domToPng } = await import('modern-screenshot');
+            const flaschenContainer = document.querySelector('[data-konfigurator-flasche]');
+            
+            if (!flaschenContainer) {
+                throw new Error('Flaschenkonfigurator-Container nicht gefunden');
+            }
+
+            // High-Quality Export
+            const dataUrl = await domToPng(flaschenContainer, {
+                quality: 1.0,
+                pixelRatio: 3, // Hohe Auflösung für Shopbilder
+                style: { transform: 'none' }
+            });
+
+            // Konfigurationsdaten sammeln
+            const configData = generateConfigData();
+            
+            // Ninox-spezifische Daten
+            const ninoxExportData = {
+                imageDataUrl: dataUrl,
+                configData: configData,
+                ninoxConfig: ninoxConfig,
+                filename: urlFilename || `flasche-${activeFlasche}-${Date.now()}.png`
+            };
+
+            // An Ninox zurückgeben
+            await onAutoExport(ninoxExportData);
+            
+            console.log('✅ Auto-Export für Ninox abgeschlossen');
+            
+            // Optional: Callback für Completion
+            if (onComplete) {
+                onComplete(ninoxExportData);
+            }
+            
+        } catch (error) {
+            console.error('❌ Auto-Export Fehler:', error);
+            alert('Fehler beim Export: ' + error.message);
+        } finally {
+            setAutoExportInProgress(false);
+            setIsProcessing(false);
+            setProcessingMessage('');
+        }
+    };
+
+    // Auto-Save für Customer-Dashboard
+    const saveToCustomerProfile = async () => {
+        if (!onSaveToProfile || !weinprofilId) return;
+        
+        try {
+            const configData = generateConfigData();
+            
+            await onSaveToProfile({
+                weinprofilId: weinprofilId,
+                customerId: customerId,
+                flaschenKonfiguration: configData
+            });
+            
+            console.log('✅ Konfiguration in Kundenprofil gespeichert');
+            
+        } catch (error) {
+            console.error('❌ Fehler beim Speichern im Kundenprofil:', error);
+        }
+    };
+
+    // Lade Konfiguration aus Kundenprofil
+    const loadFromCustomerProfile = async () => {
+        if (!onLoadFromProfile || !weinprofilId) return;
+        
+        try {
+            const profileData = await onLoadFromProfile({
+                weinprofilId: weinprofilId,
+                customerId: customerId
+            });
+            
+            if (profileData?.flaschenKonfiguration) {
+                setProfileData(profileData);
+                loadConfigurationFromObject(profileData.flaschenKonfiguration);
+                console.log('✅ Konfiguration aus Kundenprofil geladen');
+            }
+            
+        } catch (error) {
+            console.error('❌ Fehler beim Laden aus Kundenprofil:', error);
+        }
+    };
+
+    // onConfigChange Callback für externe Systeme
+    useEffect(() => {
+        if (onConfigChange && initialLoadComplete) {
+            const configData = generateConfigData();
+            onConfigChange(configData);
+        }
+    }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, onConfigChange, initialLoadComplete]);
+
+    // Auto-Save für Customer Dashboard
+    useEffect(() => {
+        if (features.autoSaveToProfile && initialLoadComplete) {
+            const timer = setTimeout(() => {
+                saveToCustomerProfile();
+            }, 1000); // 1 Sekunde nach Änderung
+            
+            return () => clearTimeout(timer);
+        }
+    }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, features.autoSaveToProfile, initialLoadComplete]);
+
+    // Auto-Export für Ninox Generator
+    useEffect(() => {
+        if (features.autoExportOnComplete && initialLoadComplete && activeFlasche && !autoExportInProgress) {
+            // Warte bis alle Parameter geladen sind, dann exportiere
+            const timer = setTimeout(() => {
+                performAutoExport();
+            }, 2000); // 2 Sekunden nach vollständiger Ladung
+            
+            return () => clearTimeout(timer);
+        }
+    }, [initialLoadComplete, activeFlasche, features.autoExportOnComplete]);
+
+    // Lade aus Customer Profile beim Start
+    useEffect(() => {
+        if (mode === KONFIGURATOR_MODES.CUSTOMER_DASHBOARD && hasMounted && !initialConfig) {
+            loadFromCustomerProfile();
+        }
+    }, [mode, hasMounted, initialConfig]);
+
+    // Mode-spezifische Header-Komponente
+    const renderModeHeader = () => {
+        switch (mode) {
+            case KONFIGURATOR_MODES.STANDALONE:
+                return (
+                    <div className="bg-blue-50 border-b border-blue-200 p-4">
+                        <h1 className="text-xl font-bold text-blue-900">🍷 Flaschenkonfigurator</h1>
+                        <p className="text-blue-700 text-sm">Stellen Sie Ihre perfekte Flasche zusammen</p>
+                    </div>
+                );
+                
+            case KONFIGURATOR_MODES.NINOX_GENERATOR:
+                return (
+                    <div className="bg-green-50 border-b border-green-200 p-4">
+                        <h1 className="text-xl font-bold text-green-900">🏭 Ninox Bildgenerator</h1>
+                        <p className="text-green-700 text-sm">Automatische Flaschen-Bilderstellung für den Onlineshop</p>
+                        {autoExportInProgress && (
+                            <div className="mt-2 text-green-800 text-sm">
+                                ⚙️ Export wird vorbereitet...
+                            </div>
+                        )}
+                    </div>
+                );
+                
+            case KONFIGURATOR_MODES.CUSTOMER_DASHBOARD:
+                return (
+                    <div className="bg-purple-50 border-b border-purple-200 p-4">
+                        <h1 className="text-xl font-bold text-purple-900">👤 Kundenprofil Konfiguration</h1>
+                        <p className="text-purple-700 text-sm">
+                            Weinprofil: {weinprofilId} • Kunde: {customerId}
+                        </p>
+                        {profileData && (
+                            <div className="mt-2 text-purple-800 text-sm">
+                                ✅ Letzte Änderung: {new Date(profileData.timestamp || Date.now()).toLocaleString()}
+                            </div>
+                        )}
+                    </div>
+                );
+                
+            default:
+                return null;
+        }
+    };
+
+    // Mode-spezifische Action-Buttons
+    const renderModeActions = () => {
+        if (mode === KONFIGURATOR_MODES.NINOX_GENERATOR) {
+            return (
+                <div className="p-4 bg-green-50 border-t border-green-200">
+                    <button
+                        onClick={performAutoExport}
+                        disabled={!activeFlasche || autoExportInProgress}
+                        className="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    >
+                        {autoExportInProgress ? '⚙️ Export läuft...' : '📤 Jetzt exportieren'}
+                    </button>
+                </div>
+            );
+        }
+        
+        if (mode === KONFIGURATOR_MODES.CUSTOMER_DASHBOARD) {
+            return (
+                <div className="p-4 bg-purple-50 border-t border-purple-200 space-y-2">
+                    <button
+                        onClick={saveToCustomerProfile}
+                        disabled={!activeFlasche}
+                        className="w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                    >
+                        💾 In Profil speichern
+                    </button>
+                    <button
+                        onClick={loadFromCustomerProfile}
+                        className="w-full py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+                    >
+                        📥 Aus Profil laden
+                    </button>
+                </div>
+            );
+        }
+        
+        return null;
     };
 
     // Aktuelle Etikett-Zustand abrufen
@@ -1006,6 +1286,11 @@ export default function Konfigurator({
             newParams.set('etikettRotation', currentParams.get('etikettRotation'));
         }
         
+        // WICHTIG: Filename-Parameter beibehalten falls vorhanden
+        if (currentParams.has('filename') && !newParams.has('filename')) {
+            newParams.set('filename', currentParams.get('filename'));
+        }
+        
         // Nur aktualisieren, wenn sich Parameter geändert haben
         const currentParamString = currentParams.toString();
         const newParamString = newParams.toString();
@@ -1015,7 +1300,8 @@ export default function Konfigurator({
             console.log("🔄 URL wird aktualisiert:", updatedUrl);
             window.history.replaceState({}, '', updatedUrl);
         }
-    }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, hasMounted, initialLoadComplete]);
+    }, [activeFlasche, activeKorken, activeKapsel, activeWeinfarbe, customColor, weinSettings, urlFilename, hasMounted, initialLoadComplete]);
+
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -1093,15 +1379,6 @@ export default function Konfigurator({
             setEtikettZuLaden(null);
         }
     }, [etikettZuLaden, isFabricReady]);
-    
-    // Erweiterte Krümmung ist jetzt permanent aktiviert - kein useEffect mehr nötig
-    
-    // useEffect für Korken-Updates - Entfernt, da HTML-Elemente verwendet werden
-    // useEffect(() => {
-    //     if (isFabricReady && fabricRef.current?.canvas) {
-    //         updateKorkenKapselOnCanvas();
-    //     }
-    // }, [activeKorken, activeKapsel, isFabricReady, aktuelleFlaschenConfig]);
 
     const handleCustomColorUpdate = (newColor) => {
         setCustomColor(newColor);
@@ -1773,7 +2050,6 @@ export default function Konfigurator({
         }
     };
     
-    // NEU: Löscht einen Entwurf
     const handleEntwurfLoeschen = (entwurfId) => {
         const neueEntwuerfe = entwuerfe.filter(e => e.id !== entwurfId);
         setEntwuerfe(neueEntwuerfe);
@@ -1803,6 +2079,7 @@ export default function Konfigurator({
             </button>
 
             {/* Sidebar */}
+            {!isAutoMode && (
             <aside 
                 ref={sidebarRef}
                 className={`
@@ -1849,6 +2126,7 @@ export default function Konfigurator({
                     flaschenConfig={aktuelleFlaschenConfig}
                     korkenDaten={korkenDaten}
                     kapselDaten={kapselDaten}
+                    urlFilename={urlFilename}
                     globalEtiketten={globalEtiketten}
                     onThumbnailClick={handleThumbnailClick}
                     onEtikettDelete={handleEtikettDelete}
@@ -1859,6 +2137,7 @@ export default function Konfigurator({
                     onMenuChange={handleMenuChange}
                 />
             </aside>
+            )}
 
             {/* Hauptansicht */}
             <main 
@@ -2018,6 +2297,9 @@ export default function Konfigurator({
                     })()
                 )}
             </main>
+            
+            {/* Mode-spezifische Actions */}
+            {renderModeActions()}
 
             {/* Modals */}
             <SaveDraftModal

@@ -1,7 +1,7 @@
-// components/ExportPanel.jsx
+// components/ExportPanel.jsx - Erweitert mit Dateiname-Editor und Link-Popup
 "use client";
 
-import { Download, Mail, Share2, Link as LinkIcon, Settings } from 'lucide-react';
+import { Download, Share2, Link as LinkIcon, Edit3, Copy, X, Check } from 'lucide-react';
 import { useState } from 'react';
 
 function ExportCard({ icon, title, description, onClick, disabled, colorClass }) {
@@ -39,9 +39,99 @@ function ExportCard({ icon, title, description, onClick, disabled, colorClass })
     );
 }
 
+// Link-Popup Komponente
+function LinkPopup({ isOpen, onClose, shareUrl }) {
+    const [copied, setCopied] = useState(false);
 
-export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef, flaschenConfig }) {
+    const handleCopyToClipboard = async () => {
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000); // Reset nach 2 Sekunden
+        } catch (error) {
+            console.error('Fehler beim Kopieren:', error);
+            // Fallback für ältere Browser
+            const textArea = document.createElement('textarea');
+            textArea.value = shareUrl;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-800">Teilbarer Link</h3>
+                    <button
+                        onClick={onClose}
+                        className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                        <X size={20} className="text-gray-500" />
+                    </button>
+                </div>
+                
+                <div className="p-4 space-y-4">
+                    <p className="text-sm text-gray-600">
+                        Teilen Sie diesen Link, um Ihre Flaschenkonfiguration mit anderen zu teilen:
+                    </p>
+                    
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs text-gray-500 mb-1">URL:</div>
+                        <div className="text-sm font-mono text-gray-800 break-all leading-relaxed">
+                            {shareUrl}
+                        </div>
+                    </div>
+                    
+                    <button
+                        onClick={handleCopyToClipboard}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                            copied 
+                                ? 'bg-green-100 text-green-800 border border-green-300' 
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        {copied ? (
+                            <>
+                                <Check size={16} />
+                                Link kopiert!
+                            </>
+                        ) : (
+                            <>
+                                <Copy size={16} />
+                                Link kopieren
+                            </>
+                        )}
+                    </button>
+                    
+                    <div className="text-xs text-gray-500">
+                        💡 Der Link enthält alle aktuellen Einstellungen und kann direkt geteilt werden.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function ExportPanel({ 
+    activeFlasche, 
+    exportableCanvas, 
+    fabricRef, 
+    flaschenConfig, 
+    urlFilename, // Prop vom Konfigurator
+    onGenerateConfigUrl // Neue Prop für URL-Generierung
+}) {
     const [exportSize, setExportSize] = useState('display'); // 'display', 'original'
+    const [customFilename, setCustomFilename] = useState(urlFilename || '');
+    const [isEditingFilename, setIsEditingFilename] = useState(false);
+    const [showLinkPopup, setShowLinkPopup] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
     
     // Exportgrößen definieren
     const getExportOptions = () => {
@@ -62,6 +152,50 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 height: 3000 // Original-Höhe
             }
         };
+    };
+
+    // Aktueller Dateiname (Custom > URL > Standard)
+    const getCurrentFilename = () => {
+        if (isEditingFilename || customFilename) {
+            return customFilename;
+        }
+        return urlFilename || '';
+    };
+
+    // Filename generieren basierend auf verschiedenen Quellen
+    const generateFilename = (selectedSize = exportSize) => {
+        const exportOptions = getExportOptions();
+        const sizeConfig = exportOptions[selectedSize];
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        
+        const currentFilename = getCurrentFilename();
+        
+        // Priorität: Custom-Input > URL-Parameter > Standard-Name
+        if (currentFilename.trim()) {
+            // Custom/URL-Filename verwenden
+            const baseFilename = currentFilename.replace(/\.(png|jpg|jpeg|pdf)$/i, ''); // Entferne eventuelle Dateiendung
+            return `${baseFilename}.png`;
+        } else {
+            // Fallback auf Standard-Naming
+            return `flaschen-konfiguration-${sizeConfig.height}px-${timestamp}.png`;
+        }
+    };
+
+    // Dateiname-Editor Funktionen
+    const handleFilenameEdit = () => {
+        setIsEditingFilename(true);
+        setCustomFilename(getCurrentFilename());
+    };
+
+    const handleFilenameSave = () => {
+        setIsEditingFilename(false);
+        // Optional: Custom filename in URL Parameter übernehmen
+        console.log('💾 Custom Filename gesetzt:', customFilename);
+    };
+
+    const handleFilenameCancel = () => {
+        setIsEditingFilename(false);
+        setCustomFilename(urlFilename || '');
     };
 
     const createExportCanvas = async (selectedSize = exportSize) => {
@@ -107,7 +241,10 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                     console.log('Export Canvas erstellt:', {
                         gewünschteGröße: `${sizeConfig.width}x${sizeConfig.height}`,
                         tatsächlicheGröße: `${canvas.width}x${canvas.height}`,
-                        originalBildGröße: `${img.width}x${img.height}`
+                        originalBildGröße: `${img.width}x${img.height}`,
+                        filename: generateFilename(selectedSize),
+                        customFilename: customFilename,
+                        urlFilename: urlFilename
                     });
                     
                     resolve(canvas);
@@ -127,10 +264,8 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
             return;
         }
         
-        const exportOptions = getExportOptions();
-        const sizeConfig = exportOptions[exportSize];
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-        const filename = `flaschen-konfiguration-${sizeConfig.height}px-${timestamp}.png`;
+        const filename = generateFilename();
+        console.log('💾 Download gestartet mit Filename:', filename);
         
         const link = document.createElement('a');
         link.download = filename;
@@ -146,9 +281,13 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
         }
         if (navigator.share) {
             finalCanvas.toBlob((blob) => {
+                const filename = generateFilename();
+                const file = new File([blob], filename, { type: 'image/png' });
                 const exportOptions = getExportOptions();
                 const sizeConfig = exportOptions[exportSize];
-                const file = new File([blob], `flaschen-konfiguration-${sizeConfig.height}px.png`, { type: 'image/png' });
+                
+                console.log('📤 Share gestartet mit Filename:', filename);
+                
                 navigator.share({
                     title: 'Meine Flaschenkonfiguration',
                     text: `Schau dir meine Flaschenkonfiguration an! (${sizeConfig.label})`,
@@ -161,9 +300,17 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
     };
 
     const handleGenerateLink = () => {
-        // Diese Funktion muss aus Konfigurator.jsx übergeben werden oder die Logik hierher verschoben werden.
-        // Fürs Erste simulieren wir es.
-        alert("Link-Generierung wird implementiert.");
+        // URL vom Konfigurator generieren lassen
+        if (onGenerateConfigUrl) {
+            const generatedUrl = onGenerateConfigUrl();
+            setShareUrl(generatedUrl);
+            setShowLinkPopup(true);
+        } else {
+            // Fallback falls Callback nicht verfügbar
+            const currentUrl = window.location.href;
+            setShareUrl(currentUrl);
+            setShowLinkPopup(true);
+        }
     };
 
     const isReady = exportableCanvas && fabricRef?.current?.canvas;
@@ -171,6 +318,58 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
     return (
         <div className="space-y-4 p-2">
             <p className="text-sm text-gray-600 mb-4">Exportieren Sie Ihre fertige Flaschenkonfiguration.</p>
+            
+            {/* Dateiname-Editor */}
+            <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">Dateiname:</label>
+                    {!isEditingFilename && (
+                        <button
+                            onClick={handleFilenameEdit}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                        >
+                            <Edit3 size={12} />
+                            Bearbeiten
+                        </button>
+                    )}
+                </div>
+                
+                {isEditingFilename ? (
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            value={customFilename}
+                            onChange={(e) => setCustomFilename(e.target.value)}
+                            placeholder="Gewünschter Dateiname (ohne .png)"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleFilenameSave}
+                                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+                            >
+                                Speichern
+                            </button>
+                            <button
+                                onClick={handleFilenameCancel}
+                                className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300 transition-colors"
+                            >
+                                Abbrechen
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-sm text-gray-800 font-mono break-all">
+                        {generateFilename()}
+                    </div>
+                )}
+                
+                {(urlFilename && !isEditingFilename) && (
+                    <div className="mt-2 text-xs text-blue-600">
+                        📁 Basiert auf URL-Parameter: {urlFilename}
+                    </div>
+                )}
+            </div>
             
             {/* Export-Größe Auswahl */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
@@ -205,7 +404,7 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 <ExportCard 
                     icon={<Download size={20} />}
                     title="Als PNG herunterladen"
-                    description={`${getExportOptions()[exportSize].label} • Hochauflösung`}
+                    description={`${getExportOptions()[exportSize].label} • ${getCurrentFilename() ? 'Custom Filename' : 'Standard-Naming'}`}
                     onClick={handleDownload}
                     disabled={!isReady}
                     colorClass="text-blue-600"
@@ -221,7 +420,7 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                 <ExportCard 
                     icon={<LinkIcon size={20} />}
                     title="Teilbaren Link erstellen"
-                    description="Link kopieren und manuell versenden"
+                    description="URL mit allen Einstellungen generieren und kopieren"
                     onClick={handleGenerateLink}
                     disabled={!isReady}
                     colorClass="text-green-600"
@@ -233,6 +432,13 @@ export default function ExportPanel({ activeFlasche, exportableCanvas, fabricRef
                     Wählen Sie zuerst eine Flasche aus.
                 </p>
             )}
+            
+            {/* Link-Popup */}
+            <LinkPopup 
+                isOpen={showLinkPopup}
+                onClose={() => setShowLinkPopup(false)}
+                shareUrl={shareUrl}
+            />
         </div>
     );
 }

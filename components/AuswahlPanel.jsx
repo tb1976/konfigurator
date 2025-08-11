@@ -135,7 +135,7 @@ export default function AuswahlPanel({
     kapselDaten, globalEtiketten,
     onEtikettSelect, onEtikettDelete,
     onThumbnailClick, entwuerfe, onEntwurfLaden, onEntwurfLoeschen, onEntwurfSpeichern,
-    onMenuChange
+    onMenuChange, urlFilename
 }) {
     const [activeMenu, setActiveMenu] = useState(null);
 
@@ -462,6 +462,7 @@ export default function AuswahlPanel({
                                     exportableCanvas={exportableCanvas}
                                     fabricRef={fabricRef}
                                     flaschenConfig={flaschenConfig}
+                                    urlFilename={urlFilename}
                                 />
                             </StackPanel>
                         )}
@@ -489,7 +490,7 @@ export default function AuswahlPanel({
             </div>
 
             <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-white">
-                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v1.0.4</div>
+                <div className="text-xs text-gray-500 text-center">Flaschenkonfigurator v1.0.5</div>
             </div>
         </div>
     );

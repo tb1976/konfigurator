@@ -1,8 +1,7 @@
 // api/generate-bottle-image.js
-import puppeteer from 'puppeteer';
+import chromium from 'chrome-aws-lambda';
 
 export default async function handler(req, res) {
-    // 🔧 CORS Headers HIER setzen (innerhalb der Funktion)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -54,18 +53,11 @@ export default async function handler(req, res) {
         console.log('📦 Normalisierte Parameter:', normalizedParams);
 
         // 1. Browser starten
-        browser = await puppeteer.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
-            ]
+        browser = await chromium.puppeteer.launch({
+            args: [...chromium.args, '--no-sandbox'],
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath,
+            headless: chromium.headless,
         });
 
         const page = await browser.newPage();

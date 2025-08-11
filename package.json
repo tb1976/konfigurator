@@ -11,6 +11,7 @@
     "deploy": "npm run build && pm2 restart konfigurator"
   },
   "dependencies": {
+    "chrome-aws-lambda": "^10.1.0",
     "fabric": "^6.7.1",
     "formidable": "^3.5.4",
     "html2canvas": "^1.4.1",
@@ -18,7 +19,7 @@
     "modern-screenshot": "^4.6.5",
     "next": "15.4.5",
     "pdfjs-dist": "^5.4.54",
-    "puppeteer": "^24.16.1",
+    "puppeteer-core": "^24.16.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "uuid": "^11.1.0"
